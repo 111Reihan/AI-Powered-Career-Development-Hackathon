@@ -1,0 +1,15 @@
+{
+  "name": "orbit-career-platform",
+  "version": "2.0.0",
+  "description": "Orbit: an AI-assisted career development platform for students (demo mode works without an API key).",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/engine.test.mjs"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^1.13.0"
+  }
+}

@@ -60,7 +60,18 @@
       <div class="side-bottom"><nav aria-label="Account">${link(['settings.html', 'Settings', '⚙'])}</nav>
       <div class="me"><span class="avatar" aria-hidden="true">${esc(first[0].toUpperCase())}</span><span><b>${esc(state.profile.name || 'Guest')}</b><small>${esc(state.profile.study || 'Not set up yet')}</small></span></div></div>`;
     const bar = $('#topbar');
-    if (bar) bar.innerHTML = `<span class="crumb">Orbit / <b>${esc(document.title.split('·')[0].trim())}</b></span><span class="top-right"><span id="modeBadge" class="badge" title="Checking AI status…">Checking…</span><span class="streak" title="Days in a row with activity">✦ ${streak()} day streak</span></span>`;
+    if (bar) bar.innerHTML = `<span class="crumb">Orbit / <b>${esc(document.title.split('·')[0].trim())}</b></span><span class="top-right"><span id="modeBadge" class="badge" title="Checking AI status…">Checking…</span><button id="themeBtn" class="theme-btn" type="button"></button><span class="streak" title="Days in a row with activity">✦ ${streak()} day streak</span></span>`;
+    const tb = $('#themeBtn');
+    if (tb) {
+      const paint = () => { const d = document.documentElement.dataset.theme === 'dark'; tb.textContent = d ? '☀ Light' : '☾ Dark'; tb.setAttribute('aria-label', d ? 'Switch to light mode' : 'Switch to dark mode'); };
+      paint();
+      tb.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('orbit.theme', next); } catch (e) { /* ignore */ }
+        paint();
+      });
+    }
     // Pages that need a profile
     if (document.body.hasAttribute('data-need-profile') && !state.onboarded) { location.replace('onboarding.html'); return; }
     status().then((s) => {

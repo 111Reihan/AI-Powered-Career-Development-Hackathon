@@ -23,7 +23,20 @@ npm start
 
 Other settings: `PORT` (default 3000). Copy `.env.example` for reference; the server reads real environment variables, not a `.env` file.
 
-Run the logic tests with `npm test`.
+Run the logic and security tests with `npm test`.
+
+## Screenshots and demo
+
+| | |
+|---|---|
+| ![Welcome](docs/01-welcome.png) | ![Careers](docs/03-careers.png) |
+| ![Assessment with quick check](docs/05-assessment.png) | ![Roadmap](docs/07-roadmap.png) |
+| ![Progress](docs/08-progress.png) | ![Dark mode (optional)](docs/09-dark-mode.png) |
+
+- Video walkthrough: [docs/orbit-demo.webm](docs/orbit-demo.webm)
+- Pitch deck: [docs/Orbit-pitch-deck.pptx](docs/Orbit-pitch-deck.pptx)
+
+The interface is light by default. A toggle in the top bar switches to dark mode and remembers the choice on that device.
 
 ## Pages (every action has its own URL)
 
@@ -31,9 +44,9 @@ Run the logic tests with `npm test`.
 |---|---|
 | `index.html` | Welcome for new users, dashboard afterwards |
 | `onboarding.html` | Name, studies, interests, work-style sliders, weekly hours, goal weeks |
-| `careers.html` | 8 careers ranked by fit, each with reasons |
+| `careers.html` | 15 careers ranked by fit, each with reasons |
 | `career.html?id=…` | Role detail, required skills, choose this career |
-| `assessment.html` | Self-rate 23 skills (0 to 4) |
+| `assessment.html` | Self-rate 31 skills, with optional 3-question quick checks for 10 of them (0 to 4) |
 | `gaps.html` | Skills to develop for the chosen career, biggest gaps first |
 | `roadmap.html` | Milestones in phases, tasks, projects, resource links, capstone |
 | `progress.html` | Progress, pace check, adjust career/hours/goal, reflection notes, activity log |
@@ -71,16 +84,24 @@ test/engine.test.mjs logic tests
 
 Performance: no framework, no web fonts, no build step, gzip and ETag caching on the server, small deferred scripts per page.
 
+## Security
+
+- API key is read from the environment only; no key or secret is ever written into a page, script or response (checked by `test/security.test.mjs`).
+- Strict Content-Security-Policy (`script-src 'self'`, no inline scripts, no external resources), `X-Frame-Options: DENY`, `nosniff`, no-referrer, and a restrictive Permissions-Policy.
+- Only the `public/` folder is served; traversal attempts, source files and dotfiles return errors.
+- `/api/coach`: POST only, 60 KB body cap, per-IP rate limit, input trimmed, output clipped; model output is HTML-escaped in the browser.
+- Everything the student types is escaped before display.
+
 ## Verified
 
-Checked in a real browser (Chromium) in both modes: onboarding validation, redirect when no profile, ranking, career detail, assessment, gaps, roadmap ticking and persistence across reload, milestone completion, goal changes keeping finished tasks, notes, export, erase, escaping of user text, and no horizontal overflow at 390 px width. The AI path was tested against a local mock of the API (request shape, fallback on error, no key in browser code). **It has not been run against the live Anthropic API in this repo's test run**, so check it with your own key.
+`npm test` runs the scoring/roadmap logic tests and the security tests. In addition, the app was checked in a real browser (Chromium) in both modes: onboarding validation, redirect when no profile, ranking, career detail, assessment, gaps, roadmap ticking and persistence across reload, milestone completion, goal changes keeping finished tasks, notes, export, erase, escaping of user text, and no horizontal overflow at 390 px width. The AI path was tested against a local mock of the API (request shape, fallback on error, no key in browser code). **It has not been run against the live Anthropic API in this repo's test run**, so check it with your own key.
 
 ## Limitations
 
 - Data lives in the browser's local storage: no accounts, no sync across devices. Clearing site data erases progress.
 - Skill levels are self-reported; fit scores are a rough guide, not a validated assessment.
-- Hour estimates are rough averages. Resource links are curated and may change or move; they are not endorsements.
-- Only 8 careers and 23 skills are included. No salary or job-market data is shown, on purpose.
+- Hour estimates are rough averages. Resource links were opened and checked on 2026-11-24 but may change or move; they are not endorsements.
+- Only 15 careers and 31 skills are included. No salary or job-market data is shown, on purpose.
 - The AI coach cannot browse the web and sees only the summary the app sends.
 - Accessibility basics are covered (labels, keyboard focus, skip link, contrast, reduced motion) but there was no screen-reader audit.
 - Static hosting (for example GitHub Pages) works in demo mode; AI mode needs the Node server.

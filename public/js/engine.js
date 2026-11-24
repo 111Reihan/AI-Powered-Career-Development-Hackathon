@@ -141,7 +141,7 @@
       headline: top[0].title + ' looks like your strongest fit right now.',
       explanations: top.map((t) => ({ title: t.title + ' (' + t.score + '/100)', detail: t.reasons.join('. ') + '.' })),
       next_steps: ['Open the ' + top[0].title + ' page and review the skills to develop.', 'Pick one career to build a roadmap for. You can change it later.', 'Plan around ' + (p.hours || 5) + ' hours a week; start with the first Foundations task.'],
-      watch_outs: state.assessed ? [] : ['You have not rated your skills yet, so these scores use interests and work style only.'],
+      watch_outs: state.assessed ? [] : ['You have not rated your skills yet, so these scores assume a neutral skill level.'],
     };
   }
 

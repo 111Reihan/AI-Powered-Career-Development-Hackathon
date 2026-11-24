@@ -22,6 +22,9 @@ const SECURITY = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
 };
 
@@ -140,16 +143,22 @@ function send(res, status, body, headers = {}) {
 const json = (res, status, obj) => send(res, status, JSON.stringify(obj), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let size = 0; const chunks = [];
-    req.on('data', (c) => { size += c.length; if (size > MAX_BODY) { reject(Object.assign(new Error('Request too large'), { status: 413 })); req.destroy(); } else chunks.push(c); });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    let size = 0, over = false; const chunks = [];
+    req.on('data', (c) => {
+      if (over) return;
+      size += c.length;
+      if (size > MAX_BODY) { over = true; reject(Object.assign(new Error('Request too large'), { status: 413 })); } else chunks.push(c);
+    });
+    req.on('end', () => { if (!over) resolve(Buffer.concat(chunks).toString('utf8')); });
     req.on('error', reject);
   });
 }
 
 const cache = new Map(); // file -> { mtime, raw, gz, type, etag }
 function serveStatic(req, res, pathname) {
-  let rel = decodeURIComponent(pathname);
+  let rel;
+  try { rel = decodeURIComponent(pathname); } catch { return send(res, 400, 'Bad request'); }
+  if (rel.includes('\0')) return send(res, 400, 'Bad request');
   if (rel.endsWith('/')) rel += 'index.html';
   if (!path.extname(rel)) rel += '.html';
   const file = path.normalize(path.join(ROOT, rel));
@@ -167,7 +176,9 @@ function serveStatic(req, res, pathname) {
     e = { mtime: st.mtimeMs, raw, type, gz: compressible ? zlib.gzipSync(raw, { level: 9 }) : null, etag: `"${st.size}-${Math.floor(st.mtimeMs)}"` };
     cache.set(file, e);
   }
-  const headers = { 'Content-Type': e.type, ETag: e.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'no-cache' };
+  // HTML always revalidates; css/js may be reused for 5 minutes (ETag revalidation after that).
+  const isAsset = /\.(css|js)$/.test(file);
+  const headers = { 'Content-Type': e.type, ETag: e.etag, Vary: 'Accept-Encoding', 'Cache-Control': isAsset ? 'public, max-age=300' : 'no-cache' };
   if (req.headers['if-none-match'] === e.etag) return send(res, 304, '', headers);
   if (e.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
     return send(res, 200, req.method === 'HEAD' ? '' : e.gz, { ...headers, 'Content-Encoding': 'gzip' });
@@ -190,6 +201,7 @@ const server = http.createServer(async (req, res) => {
       if (limited(ip)) return json(res, 429, { error: 'Too many requests. Try again in a minute.' });
       let body;
       try { body = JSON.parse(await readBody(req) || '{}'); } catch (e) {
+        if (e.status === 413) { res.setHeader('Connection', 'close'); res.on('finish', () => req.destroy()); }
         return json(res, e.status || 400, { error: e.status === 413 ? 'Request too large' : 'Invalid JSON' });
       }
       try { return json(res, 200, { source: 'ai', model: MODEL, result: await coach(body) }); }
@@ -207,6 +219,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.requestTimeout = 20_000;
+server.headersTimeout = 10_000;
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e && e.message));
 server.listen(PORT, () => {
   console.log(`Orbit running at http://localhost:${PORT}`);
   console.log(hasKey() ? `AI mode: key found, model ${MODEL}` : 'Demo mode: set ANTHROPIC_API_KEY to enable AI coaching');

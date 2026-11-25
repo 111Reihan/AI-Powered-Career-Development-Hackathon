@@ -7,7 +7,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/engine.test.mjs && node test/security.test.mjs"
+    "test": "node test/engine.test.mjs && node test/security.test.mjs && node test/auth.test.mjs"
   },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "^1.13.0"

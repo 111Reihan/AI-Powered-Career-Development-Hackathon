@@ -161,5 +161,97 @@
     };
   }
 
-  g.OrbitEngine = { scoreCareer, rankCareers, skillGaps, buildRoadmap, progress, pace, demoAdvice, makeCoachPayload };
+
+  // ---------- Exams (rule-based selection and grading from the hand-written question bank) ----------
+  const BANK = () => g.OrbitBank || {};
+  const hasBank = (id) => (BANK()[id] || []).length > 0;
+  function examSkills(state, scope, picked) {
+    const career = D.CAREERS.find((c) => c.id === state.career);
+    let ids = [];
+    if (scope === 'pick') ids = picked || [];
+    else if (scope === 'all' || !career) ids = Object.keys(D.SKILLS);
+    else if (scope === 'career') ids = Object.keys(career.reqs);
+    else if (scope === 'gaps') ids = skillGaps(career, state.skills).filter((x) => x.gap > 0).map((x) => x.id);
+    else if (scope === 'roadmap') {
+      const road = buildRoadmap(state);
+      ids = road ? road.milestones.filter((m) => m.skill && !m.tasks.every((t) => (state.done || {})[t.id])).map((m) => m.skill) : [];
+    }
+    return Array.from(new Set(ids)).filter(hasBank);
+  }
+  // opts: { skills:[ids], count, difficulty:'auto'|1|2|3, rng }
+  function buildExam(state, opts) {
+    const rng = opts.rng || Math.random;
+    const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const ids = (opts.skills || []).filter(hasBank);
+    const target = (id) => (opts.difficulty === 'auto' || !opts.difficulty ? ((state.skills[id] || 0) <= 1 ? 1 : (state.skills[id] || 0) === 2 ? 2 : 3) : Number(opts.difficulty));
+    const pools = ids.map((id) => ({ id, qs: shuffle(BANK()[id].map((q, i) => ({ q, i }))).sort((a, b) => Math.abs(a.q.d - target(id)) - Math.abs(b.q.d - target(id))) }));
+    const out = [];
+    const want = Math.max(1, Math.min(Number(opts.count) || 10, 30));
+    while (out.length < want && pools.some((p) => p.qs.length)) {
+      for (const p of pools) { if (out.length >= want) break; const n = p.qs.shift(); if (n) out.push({ skill: p.id, src: 'bank', ...n.q, key: p.id + '#' + n.i }); }
+    }
+    return shuffle(out).map((x) => {
+      const order = shuffle(x.o.map((t, k) => k));
+      return { skill: x.skill, src: x.src, q: x.q, o: order.map((k) => x.o[k]), a: order.indexOf(x.a), d: x.d, why: x.why || '', key: x.key };
+    });
+  }
+  // answers: array of chosen option index (or null/undefined for skipped)
+  function gradeExam(state, questions, answers) {
+    const bySkill = {}; let correct = 0;
+    questions.forEach((q, i) => {
+      const b = bySkill[q.skill] || (bySkill[q.skill] = { c: 0, n: 0 });
+      b.n++; if (answers[i] === q.a) { b.c++; correct++; }
+    });
+    const suggestions = [];
+    for (const [id, b] of Object.entries(bySkill)) {
+      if (b.n < 2) continue;
+      const have = state.skills[id] || 0, sug = Math.min(3, Math.round((b.c / b.n) * 4));
+      if (sug !== have && D.SKILLS[id]) suggestions.push({ skill: id, from: have, to: sug, c: b.c, n: b.n });
+    }
+    return { total: questions.length, correct, percent: questions.length ? Math.round((correct / questions.length) * 100) : 0, bySkill, suggestions };
+  }
+
+  // ---------- Progress dashboard data ----------
+  const day = (d) => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  function activityStats(state, now) {
+    now = now || new Date();
+    const act = state.activity || {};
+    const keys = Object.keys(act).filter((k) => act[k]).sort();
+    let longest = 0, run = 0, prev = null;
+    for (const k of keys) {
+      const t = new Date(k + 'T00:00:00').getTime();
+      run = prev !== null && Math.round((t - prev) / 86400000) === 1 ? run + 1 : 1;
+      longest = Math.max(longest, run); prev = t;
+    }
+    let cur = 0; const d = new Date(now);
+    if (!act[day(d)]) d.setDate(d.getDate() - 1);
+    while (act[day(d)]) { cur++; d.setDate(d.getDate() - 1); }
+    return { activeDays: keys.length, current: cur, longest, total: keys.reduce((a, k) => a + (Number(act[k]) || 1), 0) };
+  }
+  // Cumulative tasks completed by day, from the timestamps stored in state.done.
+  function taskTimeline(state) {
+    const days = {};
+    for (const ts of Object.values(state.done || {})) { const t = new Date(ts); if (!isNaN(t)) days[day(t)] = (days[day(t)] || 0) + 1; }
+    let sum = 0; return Object.keys(days).sort().map((k) => ({ day: k, n: (sum += days[k]) }));
+  }
+  function phaseBreakdown(state, road) {
+    const names = { 1: 'Foundations', 2: 'Core skills', 3: 'Advanced', 4: 'Capstone' };
+    const out = {};
+    for (const m of road.milestones) { const o = out[m.phase] || (out[m.phase] = { phase: m.phase, name: names[m.phase], done: 0, total: 0 }); for (const t of m.tasks) { o.total++; if (state.done[t.id]) o.done++; } }
+    return Object.values(out).sort((a, b) => a.phase - b.phase);
+  }
+  function badges(state, road) {
+    const st = activityStats(state), pr = road ? progress(state, road) : null, ex = state.exams || [];
+    return [
+      { id: 'first-task', title: 'First step', desc: 'Finish one roadmap task', got: Object.keys(state.done || {}).length >= 1 },
+      { id: 'streak-3', title: '3-day streak', desc: 'Be active 3 days in a row', got: st.longest >= 3 },
+      { id: 'streak-7', title: '7-day streak', desc: 'Be active 7 days in a row', got: st.longest >= 7 },
+      { id: 'first-exam', title: 'Test taker', desc: 'Complete one exam', got: ex.length >= 1 },
+      { id: 'ace', title: 'Sharp mind', desc: 'Score 80% or more on an exam of 5+ questions', got: ex.some((e) => e.total >= 5 && e.percent >= 80) },
+      { id: 'milestone', title: 'Milestone done', desc: 'Complete a whole milestone', got: Boolean(pr && pr.doneMilestones.length) },
+      { id: 'half', title: 'Halfway there', desc: 'Reach 50% of your roadmap', got: Boolean(pr && pr.percent >= 50) },
+    ];
+  }
+
+  g.OrbitEngine = { scoreCareer, rankCareers, skillGaps, buildRoadmap, progress, pace, demoAdvice, makeCoachPayload, examSkills, buildExam, gradeExam, hasBank, activityStats, taskTimeline, phaseBreakdown, badges };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -13,11 +13,11 @@
     const hrs = open.reduce((a, g) => a + g.gap * D.SKILLS[g.id].hpl, 0);
     v.innerHTML = head + `<section class="card">${picker}
       ${s.assessed ? '' : '<div class="notice" style="margin-bottom:14px">You have not rated your skills, so every skill shows as a full gap. <a href="assessment.html">Rate my skills</a></div>'}
-      <div class="row between"><h2>${esc(career.icon)} ${esc(career.title)}</h2><span class="muted small">${open.length} to develop · about ${hrs} hours in total</span></div>
+      <div class="row between"><h2 class="row" style="gap:10px">${OrbitIcons.icon(D.LOGO.career[career.id], 34)} ${esc(career.title)}</h2><span class="muted small">${open.length} to develop · about ${hrs} hours in total</span></div>
       <table><thead><tr><th>Skill</th><th>You</th><th>Target</th><th>Gap</th><th>Est. hours</th></tr></thead><tbody>
-      ${gaps.map((g) => `<tr><td>${esc(g.name)}</td><td>${esc(D.LEVELS[g.have])}</td><td>${esc(D.LEVELS[g.need])}</td><td>${g.gap === 0 ? '<span class="badge ai">Met</span>' : g.gap + ' level' + (g.gap > 1 ? 's' : '')}</td><td>${g.gap * D.SKILLS[g.id].hpl || '–'}</td></tr>`).join('')}</tbody></table>
+      ${gaps.map((g) => `<tr><td><span class="row">${OrbitIcons.icon(D.LOGO.skill[g.id], 24, g.name)} ${esc(g.name)}</span></td><td>${esc(D.LEVELS[g.have])}</td><td>${esc(D.LEVELS[g.need])}</td><td>${g.gap === 0 ? '<span class="badge ai">Met</span>' : g.gap + ' level' + (g.gap > 1 ? 's' : '')}</td><td>${g.gap * D.SKILLS[g.id].hpl || '–'}</td></tr>`).join('')}</tbody></table>
       <p class="muted small">Hour estimates are rough averages for self-paced learning, not guarantees. ${met.length ? 'You already meet the target for ' + met.length + ' skill' + (met.length > 1 ? 's' : '') + '.' : ''}</p>
-      <a class="btn" href="roadmap.html">Build my roadmap →</a></section>`;
+      <div class="row"><a class="btn" href="roadmap.html">Build my roadmap →</a><a class="btn ghost" href="exam.html?scope=gaps">Test myself on these gaps</a></div></section>`;
     bind();
   }
   function bind() {

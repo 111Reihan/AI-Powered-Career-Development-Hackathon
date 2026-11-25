@@ -14,7 +14,7 @@
         <div class="field"><label for="weeks">Goal: be job-ready in how many weeks?</label><input id="weeks" type="number" min="4" max="104" value="${esc(p.weeks)}"></div>
       </div>
       <fieldset class="field"><legend>What interests you? (pick any)</legend><div class="chips">
-        ${Object.entries(D.INTERESTS).map(([k, l]) => `<label class="chip"><input type="checkbox" name="interest" value="${k}"${p.interests.includes(k) ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div></fieldset>
+        ${Object.entries(D.INTERESTS).map(([k, l]) => `<label class="chip logo-chip"><input type="checkbox" name="interest" value="${k}"${p.interests.includes(k) ? ' checked' : ''}><span>${OrbitIcons.icon(D.LOGO.interest[k], 20, l)} ${esc(l)}</span></label>`).join('')}</div></fieldset>
       <fieldset class="field"><legend>How much do you enjoy each kind of work? (1 = not much, 5 = a lot)</legend>
         ${Object.entries(D.STYLES).map(([k, l]) => `<div class="range"><label for="st-${k}">${esc(l)}</label><output id="o-${k}">${p.style[k]}</output><input id="st-${k}" type="range" min="1" max="5" value="${p.style[k]}" style="grid-column:1/-1"></div>`).join('')}</fieldset>
       <div id="err" class="notice bad" role="alert" hidden></div>

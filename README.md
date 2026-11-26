@@ -6,10 +6,10 @@ It works fully **without an API key** (demo mode). If you add a key, an optional
 
 ## Quick start
 
-Requires Node.js 18+.
+Requires Node.js 22.13 or newer (the account database uses the built-in `node:sqlite`, which Node still labels experimental).
 
 ```bash
-npm install          # only needed for AI mode; demo mode has no dependencies
+npm install          # optional: AI mode (Anthropic SDK) and real email delivery (nodemailer). Demo mode needs nothing
 npm start            # http://localhost:3000
 ```
 
@@ -21,9 +21,19 @@ export ANTHROPIC_MODEL=claude-opus-5-5   # optional, this is the default
 npm start
 ```
 
-Other settings: `PORT` (default 3000). Copy `.env.example` for reference; the server reads real environment variables, not a `.env` file.
+Other settings: `PORT` (default 3000), plus the account and production settings below. Copy `.env.example` for reference; the server reads real environment variables, not a `.env` file.
 
-Run the logic, security and sign-in tests with `npm test`. With the server running, `python3 tools/e2e.py http://localhost:3000` runs a real-browser check of every page and the account flow (needs `pip install playwright`).
+## Tests
+
+```bash
+npm test                       # logic, unit, security, account/OAuth/SMTP, AI-proxy tests (about 1 minute)
+pip install playwright && playwright install chromium && npm i --no-save axe-core
+npm run test:e2e               # real browser: every page, sign-up/confirm/reset flow, sync, WCAG A/AA scan (BROWSER=firefox|webkit to switch)
+ANTHROPIC_API_KEY=... node tools/check-ai.mjs     # one real AI call through the server's own code (spends a few cents)
+node tools/check-providers.mjs                    # compares our sign-in URLs with what Google, Microsoft, Apple and Facebook publish
+```
+
+`.github/workflows/test.yml` runs all of this on every push, with the browser test in Chromium, Firefox and WebKit.
 
 ## Screenshots and demo
 
@@ -60,26 +70,40 @@ Every page opens for guests with its own content. Only the Home page shows the w
 
 ## Sign-in and saved data
 
-Guests keep progress in this browser only. Signed-in users get progress saved on the server and synced across devices (newest save wins).
+Guests keep progress in this browser only. Signed-in users get progress saved on the server and merged across devices (see "Sync" below).
 
 | Method | Status |
 |---|---|
-| Email + password | Works with no setup. Passwords are hashed with scrypt; sessions use HttpOnly cookies. |
-| Google, Microsoft, Facebook, Apple | Standard OAuth 2.0 authorization-code flow. **Each button turns on only when you add that provider's keys.** Buttons for providers without keys are greyed out. |
+| Email + password | Needs email delivery: on `localhost` the confirmation and reset links are printed in the server console; in production set `SMTP_URL` (below). Passwords are hashed with scrypt. |
+| Google, Microsoft, Facebook, Apple | Standard OAuth 2.0 authorization-code flow. **Each button turns on only when you add that provider's keys.** Greyed-out buttons are providers not set up on this server. |
 
-The OAuth code is tested against a local mock identity provider (`test/auth.test.mjs`: state check, code exchange, account creation, bad-state rejection). **It has not been run against the real Google, Microsoft, Facebook or Apple servers**, because that needs your own registered apps and a public HTTPS URL. Test each provider yourself after setting it up.
+**Email accounts:** sign-up sends a one-time link (24 h) and the account cannot sign in until it is opened. "Forgot password" sends a one-hour link that signs out every device. Sign-up, resend and forgot-password answer identically whether or not the address exists, and at most 3 emails per address per hour are sent. Eight wrong passwords lock an address for 15 minutes; the lock is stored in the database, so a restart does not clear it. Links carry their token after `#`, so it never reaches server logs and is removed from the address bar.
 
-Set these environment variables, and register `BASE_URL/auth/<provider>/callback` as the redirect URL in each provider's console:
+**Linking:** Google and Apple sign-ins join an existing account only when the provider says the email is verified. Microsoft and Facebook emails are never trusted for that, so those sign-ins make their own account, and you link them yourself from Settings while signed in. An unconfirmed email sign-up for an address is deleted when the real owner proves it through Google or Apple.
+
+**Settings** shows linked sign-in methods, a password change (signs out other devices), every signed-in device with a "sign out" button, "sign out everywhere", and account deletion.
+
+**Sync:** each account has a revision number. A save is accepted only if it was made from the latest revision; otherwise the server returns its copy and the browser merges (newest profile and ratings win, ticked tasks, activity days, exams and notes are combined) and retries. Nothing is silently overwritten and a wrong device clock cannot win. The server validates every save: unknown keys are dropped, numbers clamped, ids checked against the catalogue, 200 KB cap, 60 saves per minute.
+
+**Storage:** SQLite file (`data/orbit.db`, git-ignored, one server process). Emails, names and progress are encrypted with AES-256-GCM using `ORBIT_DATA_KEY`; emails are looked up through a keyed hash. Passwords are salted scrypt hashes. Provider tokens are never stored. An old `data/orbit.json` from an earlier version is imported once and renamed `.migrated`.
+
+The OAuth code is tested against a local mock identity provider (`test/auth.test.mjs`): state and cookie binding, code exchange, Apple `id_token` issuer/audience/nonce/expiry checks, linking rules, squatter removal. **It has not been run against the real Google, Microsoft, Facebook or Apple servers**, because that needs your own registered apps and a public HTTPS URL. `tools/check-providers.mjs` confirms our URLs match what the providers publish today (Facebook uses Graph API v26.0; override with `FACEBOOK_API_VERSION`). Test each provider yourself after setting it up.
+
+### Settings (environment variables)
 
 ```
-BASE_URL=https://your-domain            # defaults to http://localhost:PORT
+BASE_URL=https://your-domain            # defaults to http://localhost:PORT; register BASE_URL/auth/<provider>/callback with each provider
+ORBIT_DATA_KEY=                         # REQUIRED in production: 64 hex chars. node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+SMTP_URL=smtps://user:pass@smtp.example.com:465   MAIL_FROM="Orbit <no-reply@your-domain>"   # needs `npm install` (nodemailer)
 GOOGLE_CLIENT_ID= GOOGLE_CLIENT_SECRET=
 MICROSOFT_CLIENT_ID= MICROSOFT_CLIENT_SECRET=   # MICROSOFT_TENANT optional, default "common"
-FACEBOOK_APP_ID= FACEBOOK_APP_SECRET=
+FACEBOOK_APP_ID= FACEBOOK_APP_SECRET=           # FACEBOOK_API_VERSION optional, default v26.0
 APPLE_CLIENT_ID= APPLE_TEAM_ID= APPLE_KEY_ID= APPLE_PRIVATE_KEY=   # Apple needs a paid developer account
+TRUST_PROXY=1                           # only when exactly one reverse proxy sits in front: use its X-Forwarded-For for rate limits
+ORBIT_AI_DAILY_LIMIT=300  ORBIT_AI_USER_DAILY=30  ORBIT_AI_USER_PER_MIN=6   # AI call budgets (see below)
 ```
 
-Accounts live in `data/orbit.json` (git-ignored). This file store suits a demo or one small server; use a real database for production.
+Production rules the server enforces: `BASE_URL` must be https (or the server refuses to start), `ORBIT_DATA_KEY` must be set, cookies get the `Secure` flag and the `__Host-` prefix, `Strict-Transport-Security` is sent, and with no `SMTP_URL` email sign-up is switched off (social sign-in still works) instead of creating accounts nobody can verify. Terminate TLS at your host or proxy. (Because of these rules, opening the app from a phone over plain `http://192.168...` is not supported; use `localhost` or an https tunnel.)
 
 ## Personalised exams
 
@@ -102,8 +126,8 @@ Every coaching panel and the header badge say which of the two you are seeing ("
 
 ## How AI is wired
 
-- The browser calls `POST /api/coach` on this server. The server holds the key and calls the official `@anthropic-ai/sdk`.
-- Requests are validated and size-capped (60 KB), rate-limited per IP (12/min), and only a trimmed summary is sent. The student's name is **not** sent.
+- The browser calls `POST /api/coach` (or `/api/exam` for AI-written questions) on this server. The server holds the key and calls the official `@anthropic-ai/sdk`. **Only signed-in users can use AI**, because every call costs money; guests get the free rule-based demo text.
+- Requests are validated and size-capped (60 KB). Budgets: 6 calls per user per minute, 30 per user per day, 300 per server per UTC day (stored in the database, so a restart does not reset them); a failed upstream call is refunded. Only a trimmed summary is sent, the student's name is **not**, and skills, careers and interests are accepted only if they match the built-in catalogue, so free text cannot reach the prompt except the optional question (angle brackets removed, 300 chars).
 - Output uses a JSON schema (`output_config.format`) and is clipped before being returned.
 - `GET /api/status` tells the page whether AI is on.
 
@@ -112,13 +136,20 @@ Every coaching panel and the header badge say which of the two you are seeing ("
 ```
 server.js            static server + /api/status, /api/coach, /api/exam (no framework)
 lib/auth.js          OAuth, email sign-in, sessions, /api/data sync
-lib/store.js         JSON file store
+lib/db.js            SQLite store (encrypted fields, sessions, tokens, lockouts, AI budget)
+lib/crypto.js        key handling, AES-GCM, keyed hashes
+lib/guard.js         client IP, rate limiter, CSRF check
+lib/validate.js      server-side check of the progress data
+lib/mail.js          SMTP / dev-console email
+lib/ai.js            Anthropic calls, prompt input allow-lists
+lib/config.js        environment settings
+tools/               e2e browser test, AI and provider checks, icon builder
 public/*.html        one page per action
 public/js/data.js    sample careers, skills, resources
 public/js/engine.js  scoring, gaps, roadmap, progress, demo coaching (pure functions)
 public/js/app.js     shared shell, storage, AI/demo coaching client
 public/js/<page>.js  one small script per page
-test/engine.test.mjs logic tests
+test/*.test.mjs      logic, unit, security, account and AI-proxy tests
 ```
 
 Performance: no framework, no web fonts, no build step, gzip and ETag caching on the server, small deferred scripts per page.
@@ -128,24 +159,30 @@ Performance: no framework, no web fonts, no build step, gzip and ETag caching on
 - API key is read from the environment only; no key or secret is ever written into a page, script or response (checked by `test/security.test.mjs`).
 - Strict Content-Security-Policy (`script-src 'self'`, no inline scripts, no external resources), `X-Frame-Options: DENY`, `nosniff`, no-referrer, and a restrictive Permissions-Policy.
 - Only the `public/` folder is served; traversal attempts, source files and dotfiles return errors.
-- Sign-in: scrypt password hashes, HttpOnly + SameSite cookies, signed OAuth `state`, per-IP limits on attempts, custom-header check on state-changing calls.
-- `/api/coach`: POST only, 60 KB body cap, per-IP rate limit, input trimmed, output clipped; model output is HTML-escaped in the browser.
+- Sign-in: scrypt hashes, HttpOnly + SameSite cookies (`__Host-` and `Secure` in production), signed OAuth `state` bound to a cookie, Apple `id_token` claims checked, email confirmation and reset by single-use hashed tokens, no account enumeration, persisted lockout, session list and revocation.
+- State-changing calls need the `X-Orbit` header, a matching `Origin`, and `Sec-Fetch-Site: same-origin` when the browser sends it.
+- Rate limits are per client (IPv4 address or IPv6 /64) with bounded memory; blocked clients stay blocked when the table is flooded. Behind a proxy set `TRUST_PROXY=1` or every user shares one limit.
+- `/api/coach` and `/api/exam`: signed-in only, POST only, 60 KB cap, budgets above, input allow-listed, output clipped; model output is HTML-escaped in the browser.
+- Data at rest: AES-256-GCM for emails, names and progress (checked by reading the raw database file in `test/auth.test.mjs`).
 - Everything the student types is escaped before display.
 
 ## Verified
 
-`npm test` runs the scoring/roadmap logic tests and the security tests. In addition, the app was checked in a real browser (Chromium) in both modes: onboarding validation, redirect when no profile, ranking, career detail, assessment, gaps, roadmap ticking and persistence across reload, milestone completion, goal changes keeping finished tasks, notes, export, erase, escaping of user text, and no horizontal overflow at 390 px width. The AI path was tested against a local mock of the API (request shape, fallback on error, no key in browser code). **It has not been run against the live Anthropic API in this repo's test run**, so check it with your own key.
+- `npm test` (all pass): scoring and roadmap logic, limiter/validator units, security headers and traversal, accounts (mock identity provider, SMTP delivery through a fake mail server, production flags, lockout across restart, sync conflicts, encryption at rest, migration), AI proxy against a fake upstream (sign-in required, budgets, refunds, prompt allow-lists).
+- `npm run test:e2e` in **Chromium**: every page opens for guests, onboarding, careers, exam, progress, sign-up with email confirmation, sign-in, password reset, cross-browser sync, sign-out, no horizontal scroll at 390 px, **no WCAG 2.0/2.1 A and AA violations found by axe-core on all pages in light and dark**.
 
 ## Limitations
 
-- Guests: data lives in the browser's local storage; clearing it erases progress. Signed-in users: saved in a JSON file on the server (no password reset email, no email verification, no "keep me signed in" option).
-- Social sign-in is implemented and mock-tested only, see above.
+- **Not run against real services:** the Google, Microsoft, Facebook and Apple sign-in (mock-tested only), real SMTP providers (tested against a fake SMTP server), and the live Anthropic API (tested against a fake upstream). `tools/check-ai.mjs` and the steps above let you verify each in minutes.
+- **Firefox and WebKit** are exercised only by the GitHub Actions matrix; I could run only Chromium here. **Screen readers** were not tested by a person; axe-core catches rule-based problems, not whether the experience makes sense when spoken.
+- One server process only (SQLite file, in-memory rate limits). Run several instances and you need a shared database and limiter. `node:sqlite` is marked experimental by Node.
+- The encryption key sits in an environment variable on the same host. It protects a leaked database file or backup, not a compromised server.
+- No two-factor sign-in, no CAPTCHA, no email-change flow, and no admin tools. A determined attacker with many IP addresses can still send many sign-in attempts; the per-account lockout limits the damage but also lets someone lock a known address for 15 minutes.
 - Skill levels are self-reported; fit scores are a rough guide, not a validated assessment.
 - Hour estimates are rough averages. Resource links were opened and checked on 2026-11-24 but may change or move; they are not endorsements.
 - Only 15 careers and 31 skills are included. No salary or job-market data is shown, on purpose.
 - The AI coach cannot browse the web and sees only the summary the app sends.
-- Accessibility basics are covered (labels, keyboard focus, skip link, contrast, reduced motion) but there was no screen-reader audit.
-- Static hosting (for example GitHub Pages) works in demo mode; AI mode needs the Node server.
+- Static hosting (for example GitHub Pages) works in demo mode only; accounts and AI need the Node server.
 
 ## Hackathon submission
 

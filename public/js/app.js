@@ -27,12 +27,43 @@
   }
   function reset() { user = null; state = defaults(); try { localStorage.removeItem(KEY); } catch (e) { mem = null; } }
   // ----- account + sync (only when signed in; guests stay local) -----
-  let user = null, syncT;
+  // The server keeps one revision number per account. A save is accepted only if it was based on the latest revision;
+  // otherwise the server answers 409 with its copy, we merge the two and try again. Nothing is silently overwritten.
+  let user = null, syncT, rev = 0, synced = false, dirty = false;
   const H = { 'Content-Type': 'application/json', 'X-Orbit': '1' };
+  const sig = (s) => JSON.stringify(Object.assign({}, s, { updatedAt: 0 }));
+  const hasContent = (s) => Boolean(s && (s.onboarded || s.assessed || s.career || Object.keys(s.done || {}).length || (s.exams || []).length || Object.keys(s.activity || {}).length));
+  function mergeStates(local, remote, first) {
+    // Newest save wins for profile, ratings and ticked tasks. First sync of a browser: the account wins instead, so a guest session cannot wipe it.
+    const localWins = !first && (local.updatedAt || 0) >= (remote.updatedAt || 0);
+    const base = JSON.parse(JSON.stringify(localWins ? local : remote)), other = localWins ? remote : local;
+    base.activity = Object.assign({}, other.activity); for (const [d, n] of Object.entries((localWins ? local : remote).activity || {})) base.activity[d] = Math.max(Number(base.activity[d]) || 0, Number(n) || 0);
+    const ex = new Map(); for (const e of [...(other.exams || []), ...(base.exams || [])]) ex.set(e.t + ':' + e.total + ':' + e.correct, e);
+    base.exams = [...ex.values()].sort((x, y) => x.t - y.t).slice(-60);
+    const nt = new Map(); for (const n of [...(base.notes || []), ...(other.notes || [])]) nt.set(n.t + ':' + n.text, n);
+    base.notes = [...nt.values()].sort((x, y) => y.t - x.t).slice(0, 100);
+    if (first) { base.done = Object.assign({}, local.done, remote.done); }
+    base.updatedAt = Math.max(local.updatedAt || 0, remote.updatedAt || 0);
+    return Object.assign(defaults(), base, { profile: Object.assign(defaults().profile, base.profile) });
+  }
+  const persistLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { mem = state; } };
   function pushSoon() {
     if (!user) return;
-    clearTimeout(syncT);
-    syncT = setTimeout(() => fetch('/api/data', { method: 'PUT', headers: H, body: JSON.stringify({ data: state, updatedAt: state.updatedAt }) }).catch(() => {}), 700);
+    if (!synced) { dirty = true; return; }
+    clearTimeout(syncT); syncT = setTimeout(() => push(0), 700);
+  }
+  async function push(tries) {
+    if (!user) return;
+    try {
+      const r = await fetch('/api/data', { method: 'PUT', headers: H, body: JSON.stringify({ data: state, baseRev: rev }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { rev = j.rev; return; }
+      if (r.status === 409 && tries < 3) {
+        rev = j.rev;
+        if (j.data) { const m = mergeStates(state, j.data, false); if (sig(m) !== sig(state)) { state = m; persistLocal(); toast('Updated from another device. Reload to see it.'); } }
+        return push(tries + 1);
+      }
+    } catch (e) { /* offline: the next save retries */ }
   }
   const mePromise = fetch('/api/me', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { user: null })).catch(() => ({ user: null }));
   async function syncDown() {
@@ -40,16 +71,26 @@
     if (!user) return;
     try {
       const r = await fetch('/api/data', { cache: 'no-store' }); if (!r.ok) return;
-      const j = await r.json();
-      if (j.data && j.updatedAt > (state.updatedAt || 0)) {
-        state = Object.assign(defaults(), j.data, { profile: Object.assign(defaults().profile, j.data.profile), updatedAt: j.updatedAt });
-        try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { mem = state; }
-        location.reload();
-      } else if ((state.updatedAt || 0) > (j.updatedAt || 0)) pushSoon();
+      const j = await r.json(); rev = j.rev;
+      let first = true; try { first = localStorage.getItem('orbit.uid') !== user.id; } catch (e) { /* ignore */ }
+      if (j.data && hasContent(j.data)) {
+        const m = hasContent(state) ? mergeStates(state, j.data, first) : Object.assign(defaults(), j.data, { profile: Object.assign(defaults().profile, j.data.profile) });
+        const changed = sig(m) !== sig(state), needPush = sig(m) !== sig(j.data);
+        state = m; persistLocal();
+        try { localStorage.setItem('orbit.uid', user.id); } catch (e) { /* ignore */ }
+        synced = true;
+        if (needPush || dirty) await push(0);
+        if (changed) location.reload();
+      } else {
+        synced = true;
+        try { localStorage.setItem('orbit.uid', user.id); } catch (e) { /* ignore */ }
+        if (hasContent(state) || dirty) await push(0);
+      }
     } catch (e) { /* offline: keep local copy */ }
   }
   async function logout() {
     try { await fetch('/api/auth/logout', { method: 'POST', headers: H, body: '{}' }); } catch (e) { /* ignore */ }
+    try { localStorage.removeItem('orbit.uid'); } catch (e) { /* ignore */ }
     reset(); location.href = 'index.html';
   }
 
@@ -111,9 +152,12 @@
     if (head && !state.onboarded && !GUEST_SKIP.includes(page)) head.insertAdjacentHTML('afterend', '<div class="notice guest-note">You are exploring as a guest, so results use neutral defaults. <a href="onboarding.html">Personalise in 2 minutes</a> or <a href="login.html">sign in</a> to save your progress. Both are optional.</div>');
     status().then((s) => {
       const b = $('#modeBadge'); if (!b) return;
-      b.textContent = s.ai ? 'AI coach: on' : 'Demo mode';
-      b.className = 'badge ' + (s.ai ? 'ai' : 'demo');
-      b.title = s.ai ? 'Coaching text comes from Claude (' + s.model + '). Scores and roadmaps are rule-based.' : 'No API key: coaching text is rule-based templates, not AI. Scores and roadmaps are always rule-based.';
+      mePromise.then(() => {
+        const on = s.ai && user;
+        b.textContent = on ? 'AI coach: on' : s.ai ? 'AI: sign in' : 'Demo mode';
+        b.className = 'badge ' + (on ? 'ai' : 'demo');
+        b.title = on ? 'Coaching text comes from Claude (' + s.model + '). Scores and roadmaps are rule-based.' : s.ai ? 'AI is available to signed-in accounts. Until then coaching text is rule-based templates, not AI.' : 'No API key: coaching text is rule-based templates, not AI. Scores and roadmaps are always rule-based.';
+      });
     });
   }
 
@@ -125,10 +169,11 @@
 
   // Ask for coaching. Returns { source: 'ai'|'demo', result, note? }. Never throws.
   async function coach(task, question) {
-    const s = await status();
+    const s = await status(); await mePromise;
+    if (s.ai && !user) return { source: 'demo', result: E.demoAdvice(state, task), note: 'AI coaching is for signed-in accounts (it costs money to run). Sign in to turn it on. This is the free rule-based version.' };
     if (s.ai) {
       try {
-        const r = await fetch('/api/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(E.makeCoachPayload(state, task, question)) });
+        const r = await fetch('/api/coach', { method: 'POST', headers: H, body: JSON.stringify(E.makeCoachPayload(state, task, question)) });
         const j = await r.json();
         if (r.ok && j.result) return { source: 'ai', model: j.model, result: j.result };
         return { source: 'demo', result: E.demoAdvice(state, task), note: j.error || 'AI unavailable.' };

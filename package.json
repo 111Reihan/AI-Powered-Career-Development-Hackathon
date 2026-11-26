@@ -4,12 +4,16 @@
   "description": "Orbit: an AI-assisted career development platform for students (demo mode works without an API key).",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
-    "start": "node server.js",
-    "test": "node test/engine.test.mjs && node test/security.test.mjs && node test/auth.test.mjs"
+    "start": "node --no-warnings server.js",
+    "test": "node --no-warnings test/engine.test.mjs && node --no-warnings test/unit.test.mjs && node --no-warnings test/security.test.mjs && node --no-warnings test/auth.test.mjs && node --no-warnings test/ai.test.mjs",
+    "test:e2e": "node tools/run-e2e.mjs"
   },
   "optionalDependencies": {
-    "@anthropic-ai/sdk": "^1.13.0"
+    "@anthropic-ai/sdk": "^1.13.0",
+    "nodemailer": "^10.6.1"
   }
 }

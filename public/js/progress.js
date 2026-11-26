@@ -41,7 +41,7 @@
     }
     const W = left + (weeks + 1) * (cell + gap), H = top + 7 * (cell + gap);
     const lab = ['Mon', 'Wed', 'Fri'].map((t, i) => `<text x="0" y="${top + (i * 2 + 1) * (cell + gap) + 10}" class="hm-t">${t}</text>`).join('');
-    return `<div class="hm-wrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Activity heatmap for the last 6 months: ${total} active days" class="hm-svg">${months}${lab}${cells}</svg></div>
+    return `<div class="hm-wrap" tabindex="0" role="group" aria-label="Activity heatmap, scrolls sideways"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Activity heatmap for the last 6 months: ${total} active days" class="hm-svg">${months}${lab}${cells}</svg></div>
       <div class="hm-legend" aria-hidden="true">Less <svg width="76" height="12">${[0, 1, 2, 3, 4].map((l) => `<rect class="hm l${l}" x="${l * 15}" y="0" width="12" height="12" rx="3"/>`).join('')}</svg> More</div>`;
   }
 

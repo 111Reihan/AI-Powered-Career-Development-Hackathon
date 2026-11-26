@@ -140,9 +140,9 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px 8px
 .phase-list{display:grid;gap:10px;flex:1;min-width:160px}.phase-list .head{display:flex;justify-content:space-between;margin-bottom:4px}
 .chart{width:100%;height:auto;display:block}.gl-line{stroke:var(--line);stroke-width:1}
 .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-top:10px}
-.achv{display:flex;flex-direction:column;gap:3px;padding:14px;border:1px dashed var(--border2);border-radius:12px;opacity:.65;position:relative}
+.achv{display:flex;flex-direction:column;gap:3px;padding:14px;border:1px dashed var(--border2);border-radius:12px;position:relative}.achv:not(.got) .achv-ic{opacity:.55}.hm-wrap:focus-visible{outline:2px solid var(--brand,#5b50e6);outline-offset:2px}
 .achv small{color:var(--muted)}.achv-ic{color:var(--muted)}
-.achv.got{opacity:1;border:1px solid var(--msdoneline);background:var(--msdone)}.achv.got .achv-ic{color:var(--green)}
+.achv.got{border:1px solid var(--msdoneline);background:var(--msdone)}.achv.got .achv-ic{color:var(--green)}
 /* ---- login ---- */
 .login-wrap{display:block;min-height:100vh;padding:0;max-width:none;margin:0}
 .login{width:min(440px,100%);display:grid;gap:14px}.login h1{font-size:24px;margin:6px 0 0}.login p{margin:0}
@@ -183,3 +183,7 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px 8px
 @media(prefers-reduced-motion:reduce){.rise,.split-art .art{animation:none;opacity:1;transform:none}}
 
 .grid>*,.card{min-width:0}
+.check{display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:14px}.check input{width:auto;accent-color:var(--brand,#5b50e6)}
+.sess{list-style:none;padding:0;margin:8px 0;display:grid;gap:8px}.sess li{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px}
+.sess .ua{overflow-wrap:anywhere;flex:1;min-width:0}
+.acc-sec{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}

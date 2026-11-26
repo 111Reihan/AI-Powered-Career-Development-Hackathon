@@ -45,7 +45,7 @@
       <button class="btn" type="submit">Start exam</button></form>
       <section class="card" style="margin-top:20px"><h2>Past exams</h2>${history()}</section>`;
     const form = $('#setup');
-    Orbit.status().then((st) => { const r = $('input[name=src][value=ai]'); if (!r) return; r.disabled = !st.ai; $('#aiHint').textContent = st.ai ? ' Written by Claude for your levels, then graded by Orbit. May contain mistakes.' : ' Turn on AI mode by adding an API key on the server. Not available right now.'; });
+    Promise.all([Orbit.status(), Orbit.ready]).then(([st, me]) => { const r = $('input[name=src][value=ai]'); if (!r) return; const ok = st.ai && me.user; r.disabled = !ok; $('#aiHint').textContent = ok ? ' Written by Claude for your levels, then graded by Orbit. May contain mistakes.' : st.ai ? ' Sign in to use AI-written questions (they cost money to generate). The built-in bank is free.' : ' Turn on AI mode by adding an API key on the server. Not available right now.'; });
     const current = () => ({ scope: $('input[name=scope]:checked', form).value, picked: $$('input[name=pick]:checked', form).map((i) => i.value), count: Number($('#count').value), difficulty: $('#diff').value, timed: Number($('#timed').value), src: $('input[name=src]:checked', form).value });
     const ids = (c) => E.examSkills(s, c.scope, c.picked);
     const paint = () => {
@@ -77,7 +77,7 @@
     qs = null;
     if (cfg.src === 'ai') {
       try {
-        const r = await fetch('/api/exam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: cfg.count, skills: list.slice(0, 6).map((id) => ({ id, name: sk(id).name, level: s.skills[id] || 0 })) }) });
+        const r = await fetch('/api/exam', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Orbit': '1' }, body: JSON.stringify({ count: cfg.count, skills: list.slice(0, 6).map((id) => ({ id, name: sk(id).name, level: s.skills[id] || 0 })) }) });
         const j = await r.json();
         if (r.ok && j.questions && j.questions.length) {
           const sh = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [a[i], a[k]] = [a[k], a[i]]; } return a; };

@@ -4,10 +4,12 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEY = 'sk-ant-TEST-SECRET-KEY-12345';
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-sec-'));
 let upstreamCalls = 0;
 const upstream = http.createServer((q, r) => { q.resume(); q.on('end', () => {
   upstreamCalls++;
@@ -18,7 +20,7 @@ const upstream = http.createServer((q, r) => { q.resume(); q.on('end', () => {
 
 function start(env, port) {
   return new Promise((resolve) => {
-    const p = spawn('node', ['server.js'], { cwd: root, env: { ...process.env, PORT: port, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn('node', ['server.js'], { cwd: root, env: { ...process.env, NODE_ENV: 'test', PORT: port, ORBIT_DATA_KEY: 'a'.repeat(64), ORBIT_DB_FILE: path.join(tmp, port + '.db'), ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; p.stdout.on('data', (d) => { out += d; if (out.includes('running')) resolve({ p, out: () => out }); });
   });
 }
@@ -55,20 +57,19 @@ try {
   }
   // no key: AI disabled, status never reveals key
   let s = await (await get(3200, '/api/status')).json(); assert.equal(s.ai, false);
-  assert.equal((await get(3200, '/api/coach', { method: 'POST', body: '{}' })).status, 503);
-  // key present: status does not reveal it
+  const H = { 'content-type': 'application/json', 'x-orbit': '1' };
+  assert.equal((await get(3200, '/api/coach', { method: 'POST', headers: H, body: '{}' })).status, 503);
+  // key present: status does not reveal it; AI needs a signed-in account (full AI tests: ai.test.mjs)
   const st = await (await get(3201, '/api/status')).text(); assert.ok(!st.includes(KEY)); assert.equal(JSON.parse(st).ai, true);
-  const post = (b, h = {}) => get(3201, '/api/coach', { method: 'POST', headers: { 'content-type': 'application/json', ...h }, body: b });
-  assert.equal((await post('{not json')).status, 400);
-  assert.equal((await post('x'.repeat(70_000))).status, 413);
-  // valid call, hostile input is sanitised and never reaches the browser unescaped by the server contract
-  let r = await post(JSON.stringify({ task: 'career_advice', profile: { name: '<script>alert(1)</script>', study: 'a'.repeat(5000), interests: ['x'.repeat(500)] }, matches: [{ career: 'A', score: 'NaN', reasons: ['r'] }], skills: 'bad', gaps: null }));
-  assert.equal(r.status, 200); const j = await r.json(); assert.equal(j.source, 'ai');
-  assert.ok(!JSON.stringify(j).includes(KEY));
-  // rate limit: more than 12/min from one IP gets 429
-  const codes = []; for (let i = 0; i < 14; i++) codes.push((await post('{}')).status);
-  assert.ok(codes.includes(429), 'rate limit not applied: ' + codes);
-  // upstream failure never leaks details or the key
+  assert.equal((await get(3201, '/api/coach', { method: 'POST', headers: H, body: '{}' })).status, 401);
+  assert.equal((await get(3201, '/api/coach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 403);
+  assert.equal(upstreamCalls, 0, 'guests never reach the paid API');
+  // unauthenticated data and account routes
+  for (const [m, u] of [['GET', '/api/data'], ['PUT', '/api/data'], ['DELETE', '/api/me'], ['GET', '/api/auth/sessions']]) assert.equal((await get(3201, u, { method: m, headers: H, body: m === 'PUT' ? '{}' : undefined })).status, 401, m + ' ' + u);
+  // error responses never carry stack traces or file paths
+  for (const [u, o] of [['/api/auth/login', { method: 'POST', headers: H, body: '{bad' }], ['/%E0%A4%A', {}], ['/api/auth/verify', { method: 'POST', headers: H, body: '[]' }]]) { const t = await (await get(3201, u, o)).text(); assert.ok(!/\bat .*\.js|node_modules|\/home\//.test(t), u + ' leaked internals'); }
+  // malformed cookie must not crash anything
+  assert.equal((await get(3201, '/api/me', { headers: { cookie: 'orbit_sid=%E0%A4%A; x' } })).status, 200);
   upstream.close(); await new Promise((res) => setTimeout(res, 100));
   console.log('security tests passed');
-} finally { noKey.p.kill(); withKey.p.kill(); upstream.closeAllConnections?.(); upstream.close(); }
+} finally { noKey.p.kill(); withKey.p.kill(); upstream.closeAllConnections?.(); upstream.close(); fs.rmSync(tmp, { recursive: true, force: true }); }

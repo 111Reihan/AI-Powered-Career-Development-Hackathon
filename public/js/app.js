@@ -90,7 +90,7 @@
     } catch (e) { /* offline: keep local copy */ }
   }
   async function logout() {
-    try { await fetch('/api/auth/logout', { method: 'POST', headers: H, body: '{}' }); } catch (e) { /* ignore */ }
+    try { const r = await fetch('/api/auth/logout', { method: 'POST', headers: H, body: '{}' }); await r.text(); } catch (e) { /* ignore */ } // read the body so leaving the page cannot cut the request short
     try { localStorage.removeItem('orbit.uid'); } catch (e) { /* ignore */ }
     reset(); location.href = 'index.html';
   }

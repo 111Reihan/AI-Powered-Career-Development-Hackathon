@@ -46,7 +46,7 @@ node tools/check-providers.mjs                    # compares our sign-in URLs wi
 | ![Dark mode (optional)](docs/09-dark-mode.png) | |
 
 - Video walkthrough: [docs/orbit-demo.webm](docs/orbit-demo.webm)
-- Pitch deck: [docs/Orbit-pitch-deck.pptx](docs/Orbit-pitch-deck.pptx)
+- Pitch deck (current, 17 slides with fresh screenshots): [docs/Orbit-pitch-deck-v2.pptx](docs/Orbit-pitch-deck-v2.pptx). The first version is kept at [docs/Orbit-pitch-deck.pptx](docs/Orbit-pitch-deck.pptx). Screenshots used in the deck are in `docs/v2/`.
 
 The interface is light by default. A toggle in the top bar switches to dark mode and remembers the choice on that device.
 

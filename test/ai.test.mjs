@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { start, stop, jar, client, consoleMails, tokenFrom, countMails, wait, tmpdir } from './helpers.mjs';
 
-const KEY = 'sk-ant-TEST-SECRET-KEY-12345';
+const KEY = 'test-key-not-a-real-secret-12345';
 let calls = 0, last = null, mode = 'ok';
 const upstream = http.createServer((q, r) => { let b = ''; q.on('data', (d) => (b += d)); q.on('end', () => {
   calls++; try { last = JSON.parse(b); } catch { last = null; }
@@ -30,7 +30,7 @@ async function signedIn(S) {
   const { api } = client(S.base), email = `ai${++n}@example.com`, m = countMails(S);
   await api(jar(), 'POST', '/api/auth/register', { email, password: 'longenough1' });
   for (let i = 0; i < 80 && countMails(S) < m + 1; i++) await wait(50);
-  await api(jar(), 'POST', '/api/auth/verify', { token: tokenFrom(consoleMails(S), 'verify') });
+  await api(jar(), 'POST', '/api/auth/verify', { password: 'longenough1', token: tokenFrom(consoleMails(S), 'verify') });
   const j = jar(); const r = await api(j, 'POST', '/api/auth/login', { email, password: 'longenough1' }); assert.equal(r.status, 200);
   return { j, api: (m, u, b, h) => api(j, m, u, b, h) };
 }

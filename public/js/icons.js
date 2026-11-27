@@ -18,7 +18,7 @@
       inner = '<svg viewBox="0 0 24 24" width="' + Math.round(s * 0.58) + '" height="' + Math.round(s * 0.58) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"' + (label ? ' role="img" aria-label="' + esc(label) + '"' : ' aria-hidden="true"') + '>' + gl + '</svg>';
     }
     const brand = kind === 'brand' || name === 'microsoft';
-    return '<span class="logo' + (brand ? ' brand' : '') + '" style="width:' + s + 'px;height:' + s + 'px">' + inner + '</span>';
+    return '<span class="logo' + (brand ? ' brand' : '') + '" data-s="' + s + '">' + inner + '</span>';
   }
   // Small raw glyph for buttons/labels (inherits text colour).
   function glyph(name, size) {

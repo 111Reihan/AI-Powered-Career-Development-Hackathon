@@ -187,3 +187,12 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px 8px
 .sess{list-style:none;padding:0;margin:8px 0;display:grid;gap:8px}.sess li{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px}
 .sess .ua{overflow-wrap:anywhere;flex:1;min-width:0}
 .acc-sec{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}
+
+/* utility classes (replace inline styles so the CSP can forbid style="" attributes) */
+.u-mt20{margin-top:20px}.u-p20{padding:20px}.u-gap10{gap:10px}.u-m10{margin:10px 0 0}.u-mb14{margin-bottom:14px}.u-m6{margin:6px 0 0}.u-m0{margin:0}
+.u-mt12{margin-top:12px}.u-colall{grid-column:1/-1}.u-w100{width:100%}.u-mw420{max-width:420px}.u-m8{margin:8px 0 0}.u-my12{margin:12px 0}
+.u-mt18{margin-top:18px}.u-mt16{margin-top:16px}.u-mt10{margin-top:10px}.u-mb16{margin-bottom:16px}.u-gap8{gap:8px}.u-gap18c{gap:18px;align-items:center}.u-gap12{gap:12px}
+.portfolio-bar{flex-wrap:wrap;margin-bottom:12px}.proj .pf{display:grid;gap:10px;margin-top:12px}
+.ready-ring{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.ready-num{font-size:44px;font-weight:700;letter-spacing:-1px;line-height:1}
+.ready-parts{display:grid;gap:8px;margin:12px 0}.ready-parts .row{justify-content:space-between;font-size:14px}
+@media print{#nav,#topbar,.skip,.portfolio-bar .row,form.pf,.notice,.theme-btn{display:none!important}.layout{display:block}.card{break-inside:avoid;box-shadow:none;border:1px solid #bbb}body{background:#fff;color:#000}}

@@ -13,7 +13,7 @@ def watch(pg):
     pg.on('pageerror', lambda e: errors.append(str(e)))
     pg.on('response', lambda r: errors.append(f'HTTP {r.status} {r.request.method} {r.url}') if r.status == 403 else None)
     pg.on('requestfailed', lambda r: errors.append('reqfail ' + r.url))
-PAGES = ['index', 'onboarding', 'careers', 'assessment', 'exam', 'gaps', 'roadmap', 'progress', 'settings', 'login']
+PAGES = ['index', 'onboarding', 'careers', 'assessment', 'exam', 'gaps', 'roadmap', 'progress', 'settings', 'login', 'portfolio', 'privacy']
 with sync_playwright() as p:
     b = getattr(p, os.environ.get('BROWSER', 'chromium')).launch(); ctx = b.new_context(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
     for n in PAGES:
@@ -38,6 +38,21 @@ with sync_playwright() as p:
         pg.wait_for_selector('input[name=a]'); pg.locator('input[name=a]').first.check(); pg.click('#next')
     pg.wait_for_selector('text=correct (')
     ok('%' in pg.inner_text('#view'), 'exam finishes with a score')
+    # the three questions on Home
+    pg.goto(BASE + '/index.html'); pg.wait_for_selector('text=Your career snapshot')
+    t = pg.inner_text('#view'); ok('Where you stand' in t and 'What to develop' in t and 'What to do next' in t, 'home answers: where I stand, what to develop, what to do next')
+    # readiness + portfolio
+    pg.goto(BASE + '/progress.html'); pg.wait_for_selector('#view svg')
+    ok('Career readiness' in pg.inner_text('#view') and 'not AI' in pg.inner_text('#view'), 'progress shows a readiness card labelled rule-based')
+    pg.goto(BASE + '/portfolio.html'); pg.wait_for_selector('#view .card.empty'); ok('No finished projects' in pg.inner_text('#view'), 'portfolio starts empty')
+    pg.goto(BASE + '/roadmap.html'); pg.wait_for_selector('input[data-task$=":3"]'); pg.locator('input[data-task$=":3"]').first.check(); time.sleep(.4)
+    pg.goto(BASE + '/portfolio.html'); pg.wait_for_selector('form.pf')
+    ok(pg.locator('section.proj').count() == 1, 'a finished project appears in the portfolio')
+    pg.fill('form.pf input[type=url]', 'javascript:alert(1)'); pg.click('form.pf button[type=submit]'); pg.wait_for_selector('.notice.bad:not([hidden])')
+    ok(pg.locator('section.proj a[target=_blank]').count() == 0, 'a javascript: link is refused')
+    pg.fill('form.pf input[type=url]', 'https://github.com/priya/first-project'); pg.fill('form.pf textarea', 'Learned to clean messy data.'); pg.click('form.pf button[type=submit]')
+    pg.wait_for_selector('section.proj a[target=_blank]'); ok('noopener' in pg.get_attribute('section.proj a[target=_blank]', 'rel'), 'saved link opens safely')
+    ok(pg.locator('#copyMd').count() == 1 and pg.locator('#printBtn').count() == 1, 'copy and print buttons exist')
     # progress
     pg.goto(BASE + '/progress.html'); pg.wait_for_selector('#view svg')
     t = pg.inner_text('#view'); ok('streak' in t.lower(), 'progress shows streak'); ok(pg.locator('svg.hm-svg').count() >= 1, 'progress shows heatmap')
@@ -56,7 +71,9 @@ with sync_playwright() as p:
     pg.wait_for_selector('text=we have sent an email'); ok(True, 'sign-up asks the user to confirm the email')
     pg.goto(BASE + '/login.html'); pg.wait_for_selector('#emailForm'); pg.fill('#em', email); pg.fill('#pw', 'correct horse 9'); pg.click('#sub')
     pg.wait_for_selector('#ferr:not([hidden])'); ok('confirm' in pg.inner_text('#ferr').lower(), 'unconfirmed account cannot sign in')
-    pg.goto(BASE + '/login.html#verify=' + mail_token('verify')); pg.wait_for_selector('text=Email confirmed')
+    pg.goto(BASE + '/login.html#verify=' + mail_token('verify')); pg.wait_for_selector('#pw')
+    pg.fill('#pw', 'not the password 1'); pg.click('#sub'); pg.wait_for_selector('#ferr:not([hidden])'); ok('password' in pg.inner_text('#ferr').lower(), 'confirming needs the sign-up password')
+    pg.fill('#pw', 'correct horse 9'); pg.click('#sub'); pg.wait_for_selector('text=Email confirmed')
     ok('#' not in pg.url, 'token removed from the address bar'); ok(True, 'email confirmed through the mailed link')
     pg.fill('#em', email); pg.fill('#pw', 'correct horse 9'); pg.click('#sub'); pg.wait_for_url('**/index.html'); time.sleep(1.5)
     pg.goto(BASE + '/settings.html'); pg.wait_for_selector('#allBtn'); ok(pg.locator('.sess li').count() >= 1, 'settings lists signed-in devices')
@@ -72,7 +89,9 @@ with sync_playwright() as p:
     pg2.goto(BASE + '/progress.html'); pg2.wait_for_selector('#view svg'); time.sleep(.8)
     ex = pg2.evaluate("JSON.parse(localStorage.getItem('orbit.v2')||'{}').exams?.length||0")
     ok(ex >= 1, f'exam result followed the account to a fresh browser ({ex} exam)')
-    pg2.goto(BASE + '/settings.html'); pg2.wait_for_selector('#logoutBtn, #outBtn'); pg2.click('#outBtn'); time.sleep(.8); pg2.goto(BASE + '/settings.html'); pg2.wait_for_selector('#account h2')
+    pg2.goto(BASE + '/settings.html'); pg2.wait_for_selector('#logoutBtn, #outBtn')
+    with pg2.expect_response('**/api/auth/logout'): pg2.click('#outBtn')
+    pg2.wait_for_url('**/index.html'); pg2.goto(BASE + '/settings.html'); pg2.wait_for_selector('#account h2')
     ok(pg2.locator('#logoutBtn').count() == 0, 'sign out works')
     # mobile + dark
     pg3 = b.new_page(viewport={'width': 390, 'height': 844}); watch(pg3)

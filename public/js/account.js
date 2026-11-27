@@ -22,11 +22,13 @@
     const st = await fetch('/api/status', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ providers: {} }));
     const ids = u.identities || [];
     const msg = (t, bad) => { const e = $('#accMsg'); e.className = 'notice ' + (bad ? 'bad' : 'ok'); e.textContent = t; e.hidden = false; };
+    const pw = () => { const e = $('#cpw'); return e ? e.value : ''; };
     const render = async () => {
       let sessions = []; try { sessions = (await call('/api/auth/sessions', 'GET')).sessions; } catch (e) { /* ignore */ }
       box.innerHTML = `<h2>Account</h2><p>Signed in as <b>${esc(u.name)}</b>${u.email ? ' (' + esc(u.email) + ')' : ''}.</p>
       <p class="muted small">Your profile, ratings, exam results and roadmap progress are saved to this account and sync between devices.</p>
       <div id="accMsg" class="notice" role="status" hidden></div>
+      ${u.hasPassword ? '<div class="field"><label for="cpw">Current password (needed to remove a sign-in method or delete your account)</label><input id="cpw" type="password" autocomplete="current-password" maxlength="128"></div>' : ''}
       <div class="acc-sec"><h3>Sign-in methods</h3><ul class="sess">
         ${u.hasPassword ? '<li><span>Email and password</span></li>' : ''}
         ${ids.map((p) => `<li><span>${esc(NAMES[p] || p)}</span><button class="btn ghost" type="button" data-unlink="${esc(p)}" ${!u.hasPassword && ids.length < 2 ? 'disabled title="This is your only way to sign in"' : ''}>Remove</button></li>`).join('')}
@@ -42,12 +44,12 @@
       $('#outBtn').addEventListener('click', () => Orbit.logout());
       $('#allBtn').addEventListener('click', async () => { try { await call('/api/auth/logout-all', 'POST', {}); Orbit.reset(); location.href = 'index.html'; } catch (e) { msg(e.message, true); } });
       box.querySelectorAll('[data-revoke]').forEach((b) => b.addEventListener('click', async () => { try { await call('/api/auth/sessions/revoke', 'POST', { id: b.dataset.revoke }); render(); } catch (e) { msg(e.message, true); } }));
-      box.querySelectorAll('[data-unlink]').forEach((b) => b.addEventListener('click', async () => { try { await call('/api/auth/unlink', 'POST', { provider: b.dataset.unlink }); const i = ids.indexOf(b.dataset.unlink); if (i >= 0) ids.splice(i, 1); render(); } catch (e) { msg(e.message, true); } }));
+      box.querySelectorAll('[data-unlink]').forEach((b) => b.addEventListener('click', async () => { try { await call('/api/auth/unlink', 'POST', { provider: b.dataset.unlink, password: pw() }); const i = ids.indexOf(b.dataset.unlink); if (i >= 0) ids.splice(i, 1); render(); } catch (e) { msg(e.message, true); } }));
       const pf = $('#pwForm');
       if (pf) pf.addEventListener('submit', async (e) => { e.preventDefault(); try { await call('/api/auth/password', 'POST', { current: $('#cur').value, next: $('#nw').value }); $('#cur').value = ''; $('#nw').value = ''; msg('Password changed. Other devices were signed out.'); render(); } catch (x) { msg(x.message, true); } });
       $('#delBtn').addEventListener('click', async () => {
         if (!confirm('Delete your account and the data saved on the server? This cannot be undone.')) return;
-        try { await call('/api/me', 'DELETE'); Orbit.reset(); location.href = 'index.html'; } catch (x) { msg('Could not delete the account. Try again.', true); }
+        try { await call('/api/me', 'DELETE', { password: pw() }); Orbit.reset(); location.href = 'index.html'; } catch (x) { msg(x.message || 'Could not delete the account. Try again.', true); }
       });
     };
     render();

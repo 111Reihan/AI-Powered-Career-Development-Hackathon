@@ -253,5 +253,54 @@
     ];
   }
 
-  g.OrbitEngine = { scoreCareer, rankCareers, skillGaps, buildRoadmap, progress, pace, demoAdvice, makeCoachPayload, examSkills, buildExam, gradeExam, hasBank, activityStats, taskTimeline, phaseBreakdown, badges };
+  // Career readiness 0-100 for the chosen career. Rule-based, against the illustrative entry-level targets in the data file.
+  // Weights: skill ratings 50%, roadmap tasks 30%, exam accuracy on the career's skills 20% (only once there are 3+ answers).
+  // Parts that cannot be measured yet are left out and the rest are re-weighted, never guessed.
+  function readiness(state, road) {
+    const career = D.CAREERS.find((c) => c.id === state.career);
+    if (!career) return null;
+    const sk = state.skills || {}, reqs = Object.entries(career.reqs);
+    const need = reqs.reduce((a, [, n]) => a + n, 0), owned = reqs.reduce((a, [id, n]) => a + Math.min(sk[id] || 0, n), 0);
+    let c = 0, n = 0;
+    for (const e of (state.exams || []).slice(-10)) for (const [id, b] of Object.entries(e.bySkill || {})) if (career.reqs[id]) { c += Number(b.c) || 0; n += Number(b.n) || 0; }
+    const parts = [
+      { key: 'skills', label: 'Skill ratings vs the role\'s targets', weight: 0.5, pct: state.assessed && need ? Math.round(100 * owned / need) : null },
+      { key: 'plan', label: 'Roadmap tasks finished', weight: 0.3, pct: road ? progress(state, road).percent : 0 },
+      { key: 'exams', label: 'Exam accuracy on this role\'s skills', weight: 0.2, pct: n >= 3 ? Math.round(100 * c / n) : null },
+    ];
+    if (parts[0].pct === null) return { score: null, career: career.title, parts, label: 'Not measured yet', next: 'Rate your skills so readiness can be measured.', rule: 'rule-based' };
+    const used = parts.filter((p) => p.pct !== null), w = used.reduce((a, p) => a + p.weight, 0);
+    const score = clamp(Math.round(used.reduce((a, p) => a + p.pct * p.weight, 0) / w), 0, 100);
+    const label = score >= 85 ? 'Close to entry-level ready' : score >= 60 ? 'Nearly ready' : score >= 30 ? 'Building momentum' : 'Getting started';
+    // the part where closing the gap adds the most points
+    const lost = used.map((p) => ({ p, lost: (100 - p.pct) * p.weight })).sort((a, b) => b.lost - a.lost)[0].p;
+    let next;
+    if (lost.key === 'skills') { const top = skillGaps(career, sk).find((x) => x.gap > 0); next = top ? 'Biggest gain: raise ' + top.name + ' from "' + D.LEVELS[top.have] + '" to "' + D.LEVELS[top.need] + '".' : 'Your skill ratings meet every target.'; }
+    else if (lost.key === 'plan') { const nt = road && progress(state, road).next; next = nt ? 'Biggest gain: finish the next milestone, "' + nt.title + '".' : 'Every roadmap task is done.'; }
+    else next = 'Biggest gain: take an exam on this role\'s skills and review what you missed.';
+    if (!parts[2].pct && parts[2].pct !== 0 && lost.key !== 'exams') next += ' An exam would add a third signal.';
+    return { score, career: career.title, parts, label, next, rule: 'rule-based' };
+  }
+
+  // Finished projects across all careers (a project is the "Project" task of a milestone; the capstone counts once it is built).
+  function portfolio(state) {
+    const done = state.done || {}, items = [];
+    for (const c of D.CAREERS) {
+      for (const id of Object.keys(c.reqs)) {
+        const key = c.id + ':' + id + ':3';
+        if (done[key]) items.push({ key, careerId: c.id, career: c.title, skill: id, title: D.SKILLS[id].name + ' project', summary: D.SKILLS[id].project, doneAt: done[key], kind: 'skill' });
+      }
+      const ck = c.id + ':capstone:2';
+      if (done[ck]) items.push({ key: ck, careerId: c.id, career: c.title, skill: null, title: 'Capstone: ' + c.title, summary: c.capstone, doneAt: done[ck], kind: 'capstone' });
+    }
+    return items.sort((a, b) => Date.parse(b.doneAt) - Date.parse(a.doneAt));
+  }
+  function upcomingProjects(state, road) {
+    if (!road) return [];
+    const done = state.done || {};
+    return road.milestones.filter((m) => m.skill).map((m) => m.tasks[2]).filter((t) => !done[t.id]).slice(0, 4)
+      .map((t) => ({ key: t.id, text: t.text.replace(/^Project: /, '') }));
+  }
+
+  g.OrbitEngine = { readiness, portfolio, upcomingProjects, scoreCareer, rankCareers, skillGaps, buildRoadmap, progress, pace, demoAdvice, makeCoachPayload, examSkills, buildExam, gradeExam, hasBank, activityStats, taskTimeline, phaseBreakdown, badges };
 })(typeof window !== 'undefined' ? window : globalThis);

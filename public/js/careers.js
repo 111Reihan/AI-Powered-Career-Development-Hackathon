@@ -12,10 +12,10 @@
     $('#count').textContent = rows.length + ' of ' + D.CAREERS.length + ' careers shown';
     $('#list').innerHTML = rows.length ? rows.map((r, i) => {
       const c = r.c, top = Object.keys(c.reqs).slice(0, 5);
-      return `<article class="card career"><div class="top">${I.icon(D.LOGO.career[c.id], 46)}<div><h2 style="margin:0"><a href="career.html?id=${esc(c.id)}">${esc(c.title)}</a></h2><span class="small muted">${esc(c.tagline)}</span></div><div class="score">${r.score}<small>/100 fit</small></div></div>
+      return `<article class="card career"><div class="top">${I.icon(D.LOGO.career[c.id], 46)}<div><h2 class="u-m0"><a href="career.html?id=${esc(c.id)}">${esc(c.title)}</a></h2><span class="small muted">${esc(c.tagline)}</span></div><div class="score">${r.score}<small>/100 fit</small></div></div>
         ${bar(r.score, i === 0 && f.sort === 'fit' ? 'green' : '')}
         <div class="logos" aria-label="Key skills">${top.map((k) => I.icon(D.LOGO.skill[k], 28, D.SKILLS[k].name)).join('')}<span class="small muted">${top.map((k) => esc(D.SKILLS[k].name)).slice(0, 3).join(', ')}…</span></div>
-        <p class="small" style="margin:0"><b>Why:</b></p><ul class="reasons">${r.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        <p class="small u-m0"><b>Why:</b></p><ul class="reasons">${r.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
         <div class="row"><a class="btn sm" href="career.html?id=${esc(c.id)}">View details</a>${s.career === c.id ? '<span class="badge ai">Your chosen path</span>' : ''}</div></article>`;
     }).join('') : '<div class="card empty"><h2>No careers match</h2><p>Try removing a filter.</p></div>';
   }
@@ -26,7 +26,7 @@
       <fieldset class="field full"><legend>Show careers involving</legend><div class="chips">${Object.entries(D.INTERESTS).map(([k, l]) => `<label class="chip logo-chip"><input type="checkbox" value="${k}"><span>${I.icon(D.LOGO.interest[k], 20, l)} ${esc(l)}</span></label>`).join('')}</div></fieldset>`;
     $('#filters').addEventListener('input', () => { f.q = $('#q').value; f.sort = $('#sort').value; f.interests = $$('#filters input[type=checkbox]:checked').map((i) => i.value); list(); });
     list();
-    if (!s.assessed) $('#filters').insertAdjacentHTML('beforebegin', '<div class="notice" style="margin-bottom:16px">Skills are not rated yet, so scores assume a neutral skill level. <a href="assessment.html">Rate your skills</a> to include them.</div>');
+    if (!s.assessed) $('#filters').insertAdjacentHTML('beforebegin', '<div class="notice u-mb16">Skills are not rated yet, so scores assume a neutral skill level. <a href="assessment.html">Rate your skills</a> to include them.</div>');
     Orbit.wireCoach('#coachBtn', '#coachOut', 'career_advice');
   });
 })();

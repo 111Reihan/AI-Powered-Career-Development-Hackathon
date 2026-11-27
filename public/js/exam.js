@@ -28,10 +28,10 @@
     const all = Object.keys(D.SKILLS).filter(E.hasBank).sort((a, b) => sk(a).name.localeCompare(sk(b).name));
     const count = Number(params.get('n')) || (cfg && cfg.count) || 10;
     v.innerHTML = `<form id="setup" class="card" novalidate>
-      ${s.career ? '' : '<div class="notice" style="margin-bottom:14px">No career chosen yet, so the exam is not tied to a goal. <a href="careers.html">Choose a career</a> to unlock roadmap and gap exams.</div>'}
+      ${s.career ? '' : '<div class="notice u-mb14">No career chosen yet, so the exam is not tied to a goal. <a href="careers.html">Choose a career</a> to unlock roadmap and gap exams.</div>'}
       <fieldset class="field"><legend>1. What should the exam cover?</legend>
         ${sc.map(([k, l, h]) => `<label class="opt"><input type="radio" name="scope" value="${k}"${k === scope ? ' checked' : ''}><span><b>${esc(l)}</b><small class="muted"> ${esc(h)}</small></span></label>`).join('')}
-        <div id="pickBox" class="chips" style="margin-top:10px"${scope === 'pick' ? '' : ' hidden'}>${all.map((id) => `<label class="chip logo-chip"><input type="checkbox" name="pick" value="${id}"${picked.includes(id) ? ' checked' : ''}><span>${chip(id, 20)} ${esc(sk(id).name)}</span></label>`).join('')}</div></fieldset>
+        <div id="pickBox" class="chips u-mt10"${scope === 'pick' ? '' : ' hidden'}>${all.map((id) => `<label class="chip logo-chip"><input type="checkbox" name="pick" value="${id}"${picked.includes(id) ? ' checked' : ''}><span>${chip(id, 20)} ${esc(sk(id).name)}</span></label>`).join('')}</div></fieldset>
       <div class="grid g3">
         <div class="field"><label for="count">2. Number of questions</label><select id="count">${[5, 10, 15, 20].map((n) => `<option${n === count ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
         <div class="field"><label for="diff">3. Difficulty</label><select id="diff"><option value="auto">Adapt to my skill levels</option><option value="1">Easy</option><option value="2">Medium</option><option value="3">Hard</option></select></div>
@@ -43,7 +43,7 @@
       <div id="preview" class="notice" aria-live="polite"></div>
       <div id="err" class="notice bad" role="alert" hidden></div>
       <button class="btn" type="submit">Start exam</button></form>
-      <section class="card" style="margin-top:20px"><h2>Past exams</h2>${history()}</section>`;
+      <section class="card u-mt20"><h2>Past exams</h2>${history()}</section>`;
     const form = $('#setup');
     Promise.all([Orbit.status(), Orbit.ready]).then(([st, me]) => { const r = $('input[name=src][value=ai]'); if (!r) return; const ok = st.ai && me.user; r.disabled = !ok; $('#aiHint').textContent = ok ? ' Written by Claude for your levels, then graded by Orbit. May contain mistakes.' : st.ai ? ' Sign in to use AI-written questions (they cost money to generate). The built-in bank is free.' : ' Turn on AI mode by adding an API key on the server. Not available right now.'; });
     const current = () => ({ scope: $('input[name=scope]:checked', form).value, picked: $$('input[name=pick]:checked', form).map((i) => i.value), count: Number($('#count').value), difficulty: $('#diff').value, timed: Number($('#timed').value), src: $('input[name=src]:checked', form).value });
@@ -125,11 +125,11 @@
     v.innerHTML = `${timeUp ? '<div class="notice">Time is up, so the exam was submitted.</div>' : ''}${aiNote ? `<div class="notice">${esc(aiNote)}</div>` : ''}
       <section class="card"><div class="row between"><div><div class="eyebrow">Result</div><h2>${res.correct} of ${res.total} correct (${res.percent}%)</h2><p class="muted">${msg}${unanswered ? ' ' + unanswered + ' unanswered question' + (unanswered > 1 ? 's' : '') + ' counted as wrong.' : ''}</p></div>
         <div class="ring" role="img" aria-label="${res.percent} percent">${ring(res.percent)}</div></div></section>
-      <section class="card" style="margin-top:20px"><h2>By skill</h2>${Object.entries(res.bySkill).map(([id, b]) => `<div class="skill"><div class="head"><span class="row">${chip(id, 22)} ${esc(sk(id).name)}</span><span>${b.c}/${b.n}</span></div>${Orbit.bar(Math.round(b.c / b.n * 100), b.c === b.n ? 'green' : '')}</div>`).join('')}</section>
-      ${res.suggestions.length ? `<section class="card" style="margin-top:20px"><h2>Should your ratings change?</h2><p class="muted small">Suggestions come from your score on 2 or more questions per skill. Exams can show up to "Solid", never "Strong". You decide.</p>
+      <section class="card u-mt20"><h2>By skill</h2>${Object.entries(res.bySkill).map(([id, b]) => `<div class="skill"><div class="head"><span class="row">${chip(id, 22)} ${esc(sk(id).name)}</span><span>${b.c}/${b.n}</span></div>${Orbit.bar(Math.round(b.c / b.n * 100), b.c === b.n ? 'green' : '')}</div>`).join('')}</section>
+      ${res.suggestions.length ? `<section class="card u-mt20"><h2>Should your ratings change?</h2><p class="muted small">Suggestions come from your score on 2 or more questions per skill. Exams can show up to "Solid", never "Strong". You decide.</p>
         ${res.suggestions.map((g) => `<div class="row between sug"><span>${chip(g.skill, 22)} <b>${esc(sk(g.skill).name)}</b>: ${esc(D.LEVELS[g.from])} → ${esc(D.LEVELS[g.to])} <small class="muted">(${g.c}/${g.n} correct)</small></span><button class="btn sm" type="button" data-set="${g.skill}" data-to="${g.to}">Apply</button></div>`).join('')}</section>` : ''}
-      <section class="card" style="margin-top:20px"><h2>Review</h2>${qs.map((q, i) => { const ok = answers[i] === q.a; return `<div class="rev ${ok ? 'ok' : 'bad'}"><b>${ok ? '✓' : '✗'} ${i + 1}. ${esc(q.q)}</b><p class="small">Your answer: ${answers[i] === null ? '<i>skipped</i>' : esc(q.o[answers[i]])}${ok ? '' : `<br>Correct answer: <b>${esc(q.o[q.a])}</b>`}${q.why ? `<br><span class="muted">${esc(q.why)}</span>` : ''}</p></div>`; }).join('')}</section>
-      <div class="row" style="margin-top:20px"><button class="btn" id="again" type="button">Retake with new questions</button><button class="btn ghost" id="new" type="button">Change settings</button><a class="btn ghost" href="progress.html">See my progress</a></div>`;
+      <section class="card u-mt20"><h2>Review</h2>${qs.map((q, i) => { const ok = answers[i] === q.a; return `<div class="rev ${ok ? 'ok' : 'bad'}"><b>${ok ? '✓' : '✗'} ${i + 1}. ${esc(q.q)}</b><p class="small">Your answer: ${answers[i] === null ? '<i>skipped</i>' : esc(q.o[answers[i]])}${ok ? '' : `<br>Correct answer: <b>${esc(q.o[q.a])}</b>`}${q.why ? `<br><span class="muted">${esc(q.why)}</span>` : ''}</p></div>`; }).join('')}</section>
+      <div class="row u-mt20"><button class="btn" id="again" type="button">Retake with new questions</button><button class="btn ghost" id="new" type="button">Change settings</button><a class="btn ghost" href="progress.html">See my progress</a></div>`;
     $$('button[data-set]', v).forEach((b) => b.addEventListener('click', () => { Orbit.save((st) => { st.skills[b.dataset.set] = Number(b.dataset.to); st.assessed = true; if (!st.baseSkills) st.baseSkills = Object.assign({}, st.skills); }); b.disabled = true; b.textContent = 'Applied'; Orbit.toast('Rating updated.'); }));
     $('#again').addEventListener('click', () => start(E.examSkills(Orbit.state, cfg.scope, cfg.picked)));
     $('#new').addEventListener('click', setup);

@@ -9,10 +9,11 @@ import { fileURLToPath } from 'node:url';
 import * as auth from './lib/auth.js';
 import * as db from './lib/db.js';
 import { limited, csrfOk } from './lib/guard.js';
-import { SECURE, IS_PROD, LOCAL, AI_DAILY_TOTAL, AI_DAILY_USER, AI_PER_MIN_USER } from './lib/config.js';
+import { SECURE, IS_PROD, IS_TEST, LOCAL, HOST, isLoopback, BASE, TRUST_PROXY, AI_DAILY_TOTAL, AI_DAILY_USER, AI_PER_MIN_USER } from './lib/config.js';
 import { mailMode } from './lib/mail.js';
-import { MODEL, hasKey, getClient, aiReady, coach, genExam } from './lib/ai.js';
+import { MODEL, hasKey, aiReady, coach, genExam } from './lib/ai.js';
 if (IS_PROD && !SECURE && !LOCAL) { console.error('Refusing to start: BASE_URL must be https:// in production, otherwise cookies cannot be marked Secure.'); process.exit(1); }
+if (!IS_PROD && !IS_TEST && !isLoopback(HOST)) { console.error(`Refusing to start: BASE_URL is localhost (dev mode) but HOST=${HOST} is reachable from the network. Set BASE_URL to your public https URL, or NODE_ENV=production.`); process.exit(1); }
 const legacy = db.importLegacy(process.env.ORBIT_DATA_FILE || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'orbit.json'));
 if (legacy) console.log(`Imported ${legacy} account(s) from the old JSON store into SQLite.`);
 
@@ -33,7 +34,7 @@ const SECURITY = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   ...(SECURE ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
 };
 
 // ---------- helpers ----------
@@ -90,11 +91,13 @@ function serveStatic(req, res, pathname) {
 // ---------- server ----------
 const server = http.createServer(async (req, res) => {
   try {
+    // Behind a TLS-terminating proxy: send plain-http requests to https (the proxy must set X-Forwarded-Proto).
+    if (SECURE && TRUST_PROXY && String(req.headers['x-forwarded-proto'] || '').split(',').pop().trim() === 'http') {
+      res.writeHead(308, { ...SECURITY, Location: BASE + req.url }); return res.end();
+    }
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/api/status' && req.method === 'GET') {
-      const ready = await aiReady();
-      return json(res, 200, { ai: ready, model: ready ? MODEL : null, providers: auth.configured(), email: auth.emailEnabled(), mail: mailMode(),
-        reason: hasKey() ? ((await getClient()).error || null) : 'ANTHROPIC_API_KEY not set' });
+    if (url.pathname === '/api/status' && req.method === 'GET') { // public and minimal: no model name, no setup hints
+      return json(res, 200, { ai: await aiReady(), providers: auth.configured(), email: auth.emailEnabled(), mail: mailMode() });
     }
     if (await auth.handle(req, res, url, { json, readBody })) return;
     if (url.pathname === '/api/exam' || url.pathname === '/api/coach') {
@@ -136,7 +139,7 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 20_000;
 server.headersTimeout = 10_000;
 process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e && e.message));
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`Orbit running at http://localhost:${PORT}`);
   console.log(hasKey() ? `AI mode: key found, model ${MODEL}` : 'Demo mode: set ANTHROPIC_API_KEY to enable AI coaching');
 });

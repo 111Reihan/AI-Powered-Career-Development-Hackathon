@@ -10,11 +10,11 @@
     const pick3 = (id) => { const b = (OrbitBank[id] || []).slice().sort((x, y) => x.d - y.d); return b.length < 3 ? [] : [b[0], b[Math.floor(b.length / 2)], b[b.length - 1]]; };
     const QZ = {}; ids.forEach((id) => { QZ[id] = pick3(id); });
     const quiz = (id) => !QZ[id].length ? '' : `<details class="quiz"><summary>Not sure? Take a 3-question quick check</summary>${QZ[id].map((q, n) => `<fieldset class="q"><legend>${n + 1}. ${esc(q.q)}</legend>${q.o.map((o, k) => `<label><input type="radio" name="q-${id}-${n}" value="${k}"><span>${esc(o)}</span></label>`).join('')}</fieldset>`).join('')}<button type="button" class="btn sm ghost" data-quiz="${id}">Suggest my level</button> <a class="small" href="exam.html?skill=${id}&n=10&start=1">or take a longer exam on this skill</a><p class="notice" data-result="${id}" role="status" hidden></p></details>`;
-    const row = (id) => `<fieldset class="skill"><legend class="head" style="width:100%"><span class="row">${I.icon(D.LOGO.skill[id], 26, D.SKILLS[id].name)} ${esc(D.SKILLS[id].name)}</span></legend><div class="levels">${D.LEVELS.map((l, i) => `<label><input type="radio" name="${id}" value="${i}"${(s.skills[id] || 0) === i ? ' checked' : ''}><span>${i} · ${l}</span></label>`).join('')}</div>${quiz(id)}</fieldset>`;
+    const row = (id) => `<fieldset class="skill"><legend class="head u-w100"><span class="row">${I.icon(D.LOGO.skill[id], 26, D.SKILLS[id].name)} ${esc(D.SKILLS[id].name)}</span></legend><div class="levels">${D.LEVELS.map((l, i) => `<label><input type="radio" name="${id}" value="${i}"${(s.skills[id] || 0) === i ? ' checked' : ''}><span>${i} · ${l}</span></label>`).join('')}</div>${quiz(id)}</fieldset>`;
     const rel = ids.filter((i) => relevant.has(i)), oth = ids.filter((i) => !relevant.has(i));
     form.innerHTML = `<section class="card"><h2>Relevant to your ${s.career ? 'chosen career' : 'top matches'}</h2>${rel.map(row).join('')}</section>
-      <details class="card" style="margin-top:20px"><summary><b>Other skills (${oth.length})</b></summary>${oth.map(row).join('')}</details>
-      <div class="row" style="margin-top:20px"><button class="btn" type="submit">Save my skills</button><span class="muted small">You can update these any time.</span></div>`;
+      <details class="card u-mt20"><summary><b>Other skills (${oth.length})</b></summary>${oth.map(row).join('')}</details>
+      <div class="row u-mt20"><button class="btn" type="submit">Save my skills</button><span class="muted small">You can update these any time.</span></div>`;
     form.addEventListener('click', (e) => {
       const b = e.target.closest('[data-quiz]'); if (!b) return;
       const id = b.dataset.quiz, qs = QZ[id], out = form.querySelector(`[data-result="${id}"]`);

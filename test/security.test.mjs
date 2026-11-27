@@ -8,7 +8,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const KEY = 'sk-ant-TEST-SECRET-KEY-12345';
+const KEY = 'test-key-not-a-real-secret-12345';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-sec-'));
 let upstreamCalls = 0;
 const upstream = http.createServer((q, r) => { q.resume(); q.on('end', () => {

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node --no-warnings server.js",
-    "test": "node --no-warnings test/engine.test.mjs && node --no-warnings test/unit.test.mjs && node --no-warnings test/security.test.mjs && node --no-warnings test/auth.test.mjs && node --no-warnings test/ai.test.mjs",
+    "test": "node --no-warnings test/engine.test.mjs && node --no-warnings test/unit.test.mjs && node --no-warnings test/security.test.mjs && node --no-warnings test/auth.test.mjs && node --no-warnings test/ai.test.mjs && node --no-warnings test/hardening.test.mjs",
     "test:e2e": "node tools/run-e2e.mjs"
   },
   "optionalDependencies": {

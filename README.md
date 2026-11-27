@@ -26,7 +26,7 @@ Other settings: `PORT` (default 3000), plus the account and production settings 
 ## Tests
 
 ```bash
-npm test                       # logic, unit, security, account/OAuth/SMTP, AI-proxy tests (about 1 minute)
+npm test                       # logic, unit, security, account/OAuth/SMTP, AI-proxy and hardening tests (about 2 minutes)
 pip install playwright && playwright install chromium && npm i --no-save axe-core
 npm run test:e2e               # real browser: every page, sign-up/confirm/reset flow, sync, WCAG A/AA scan (BROWSER=firefox|webkit to switch)
 ANTHROPIC_API_KEY=... node tools/check-ai.mjs     # one real AI call through the server's own code (spends a few cents)
@@ -54,7 +54,7 @@ The interface is light by default. A toggle in the top bar switches to dark mode
 
 | Page | What it does |
 |---|---|
-| `index.html` | Welcome for new users, dashboard afterwards |
+| `index.html` | Welcome for new users. Afterwards a dashboard that opens with a three-part career snapshot (where you stand, what to develop, what to do next; all rule-based, labelled as such), top fits, plan and readiness |
 | `onboarding.html` | Name, studies, interests, work-style sliders, weekly hours, goal weeks |
 | `careers.html` | 15 careers ranked by fit, each with reasons |
 | `career.html?id=…` | Role detail, required skills, choose this career |
@@ -63,8 +63,10 @@ The interface is light by default. A toggle in the top bar switches to dark mode
 | `assessment.html` | Self-rate 31 skills, with optional 3-question quick checks for 10 of them (0 to 4) |
 | `gaps.html` | Skills to develop for the chosen career, biggest gaps first |
 | `roadmap.html` | Milestones in phases, tasks, projects, resource links, capstone |
-| `progress.html` | LeetCode-style dashboard: activity heatmap, streaks, roadmap ring, tasks over time, exam scores, achievements; adjust career/hours/goal, notes. Add `?sample=1` to preview with made-up data |
-| `settings.html` | Edit profile, download data, erase data |
+| `progress.html` | Career-readiness score (rule-based: skills 50%, roadmap 30%, exams 20%, parts not yet measured are left out), then a LeetCode-style dashboard: activity heatmap, streaks, roadmap ring, tasks over time, exam scores, achievements; adjust career/hours/goal, notes. Add `?sample=1` to preview with made-up data |
+| `portfolio.html` | Finished roadmap projects with an optional https link and reflection; copy as Markdown or print to PDF |
+| `privacy.html` | Plain-language list of what is stored, where, and how to delete it |
+| `settings.html` | Edit profile, download data, erase data, manage sign-in methods and devices |
 
 Every page opens for guests with its own content. Only the Home page shows the welcome; other pages show empty states or neutral defaults until you set a profile.
 
@@ -157,18 +159,25 @@ Performance: no framework, no web fonts, no build step, gzip and ETag caching on
 ## Security
 
 - API key is read from the environment only; no key or secret is ever written into a page, script or response (checked by `test/security.test.mjs`).
-- Strict Content-Security-Policy (`script-src 'self'`, no inline scripts, no external resources), `X-Frame-Options: DENY`, `nosniff`, no-referrer, and a restrictive Permissions-Policy.
+- Strict Content-Security-Policy (`script-src 'self'`, `style-src 'self'` with no inline scripts or styles, `object-src 'none'`, no external resources), `X-Frame-Options: DENY`, `nosniff`, no-referrer, and a restrictive Permissions-Policy.
 - Only the `public/` folder is served; traversal attempts, source files and dotfiles return errors.
 - Sign-in: scrypt hashes, HttpOnly + SameSite cookies (`__Host-` and `Secure` in production), signed OAuth `state` bound to a cookie, Apple `id_token` claims checked, email confirmation and reset by single-use hashed tokens, no account enumeration, persisted lockout, session list and revocation.
 - State-changing calls need the `X-Orbit` header, a matching `Origin`, and `Sec-Fetch-Site: same-origin` when the browser sends it.
 - Rate limits are per client (IPv4 address or IPv6 /64) with bounded memory; blocked clients stay blocked when the table is flooded. Behind a proxy set `TRUST_PROXY=1` or every user shares one limit.
 - `/api/coach` and `/api/exam`: signed-in only, POST only, 60 KB cap, budgets above, input allow-listed, output clipped; model output is HTML-escaped in the browser.
 - Data at rest: AES-256-GCM for emails, names and progress (checked by reading the raw database file in `test/auth.test.mjs`).
-- Everything the student types is escaped before display.
+- Everything the student types is escaped before display. Portfolio links must be `https://` with no credentials; the server drops anything else.
+- Passwords: scrypt at the OWASP cost (N=2^16, r=8, p=2) with the parameters stored in each hash; older hashes are upgraded at the next sign-in; common passwords are refused; at most 2 hashes run at once so a flood cannot exhaust memory.
+- Email links (confirm, reset) are single use. Confirming also asks for the sign-up password, so a stranger's sign-up mail cannot be confirmed by the real owner by accident. Deleting an account or removing a sign-in method needs the password (or a sign-in within 15 minutes for social-only accounts).
+- Lockout is per account and client (8 failures) plus a per-account cap (40), so a stranger cannot lock you out of your own account, and spread-out guessing is still capped.
+- Email is capped per address (3/hour), per client (`ORBIT_MAIL_IP_HOURLY`) and per day for the whole server (`ORBIT_MAIL_DAILY`); at most 10 sessions per account.
+- Encryption: each value is bound to its row and column (AAD), so swapped ciphertexts do not decrypt. Key rotation: set the new key in `ORBIT_DATA_KEY`, the old one in `ORBIT_DATA_KEY_OLD`, restart once (rows are re-sealed), then remove the old key.
+- Dev mode (plain-http localhost) listens on `127.0.0.1` only and refuses to start if `HOST` is public. Behind a proxy with `TRUST_PROXY=1`, plain-http requests are redirected to https. The old plaintext JSON import file is deleted after it is imported.
+- `/api/status` reveals only whether AI, email and each provider are on.
 
 ## Verified
 
-- `npm test` (all pass): scoring and roadmap logic, limiter/validator units, security headers and traversal, accounts (mock identity provider, SMTP delivery through a fake mail server, production flags, lockout across restart, sync conflicts, encryption at rest, migration), AI proxy against a fake upstream (sign-in required, budgets, refunds, prompt allow-lists).
+- `npm test` (all pass, including `test/hardening.test.mjs`): scoring and roadmap logic, limiter/validator units, security headers and traversal, accounts (mock identity provider, SMTP delivery through a fake mail server, production flags, lockout across restart, sync conflicts, encryption at rest, migration), AI proxy against a fake upstream (sign-in required, budgets, refunds, prompt allow-lists).
 - `npm run test:e2e` in **Chromium**: every page opens for guests, onboarding, careers, exam, progress, sign-up with email confirmation, sign-in, password reset, cross-browser sync, sign-out, no horizontal scroll at 390 px, **no WCAG 2.0/2.1 A and AA violations found by axe-core on all pages in light and dark**.
 
 ## Limitations
@@ -177,6 +186,7 @@ Performance: no framework, no web fonts, no build step, gzip and ETag caching on
 - **Firefox and WebKit** are exercised only by the GitHub Actions matrix; I could run only Chromium here. **Screen readers** were not tested by a person; axe-core catches rule-based problems, not whether the experience makes sense when spoken.
 - One server process only (SQLite file, in-memory rate limits). Run several instances and you need a shared database and limiter. `node:sqlite` is marked experimental by Node.
 - The encryption key sits in an environment variable on the same host. It protects a leaked database file or backup, not a compromised server.
+- Apple's `id_token` signature is not re-checked (allowed by the OIDC spec for a token fetched directly from Apple over TLS); its claims are. GitHub Actions are pinned to major versions, not commit hashes (Dependabot keeps them current).
 - No two-factor sign-in, no CAPTCHA, no email-change flow, and no admin tools. A determined attacker with many IP addresses can still send many sign-in attempts; the per-account lockout limits the damage but also lets someone lock a known address for 15 minutes.
 - Skill levels are self-reported; fit scores are a rough guide, not a validated assessment.
 - Hour estimates are rough averages. Resource links were opened and checked on 2026-11-24 but may change or move; they are not endorsements.

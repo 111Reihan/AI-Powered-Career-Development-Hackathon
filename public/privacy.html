@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#5b4bd6">
+<meta name="description" content="What Orbit stores, where, and how to delete it.">
+<title>Privacy · Orbit</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%235b4bd6%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%276%27 fill=%27%23fff%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/theme.js"></script>
+<script src="js/icons.js" defer></script>
+<script src="js/data.js" defer></script>
+<script src="js/bank.js" defer></script>
+<script src="js/engine.js" defer></script>
+<script src="js/app.js" defer></script>
+<script src="js/account.js" defer></script>
+</head>
+<body data-page="privacy">
+<a class="skip" href="#main">Skip to content</a>
+<div class="layout">
+<aside id="nav" aria-label="Sidebar"></aside>
+<div>
+<div id="topbar"></div>
+<main id="main" tabindex="-1">
+<div class="page-head"><div class="eyebrow">Your data</div><h1>Privacy</h1><p>What Orbit stores, where it lives, and how to remove it.</p></div>
+<section class="card"><h2>If you use Orbit as a guest</h2>
+<p>Your profile, skill ratings, exam results, roadmap progress, notes and project links stay in this browser (local storage). They are not sent to the server. "Erase all data" in Settings removes them.</p></section>
+<section class="card u-mt20"><h2>If you sign in</h2>
+<ul class="reasons">
+<li>We store your email address, name, a one-way hash of your password (if you chose one), the ID your social sign-in provider gave us, and the same progress data as above.</li>
+<li>Email, name and progress are encrypted in the database. Passwords are never stored, only a salted scrypt hash.</li>
+<li>For each signed-in device we keep a random session token (stored hashed), the browser name, and when it was last used, so you can sign devices out in Settings.</li>
+<li>Your email is used only to confirm your address and to reset your password. We do not send marketing email.</li>
+<li>One cookie keeps you signed in (HttpOnly, Secure on https). Your theme choice is saved in local storage. There is no advertising or analytics tracking.</li>
+</ul></section>
+<section class="card u-mt20"><h2>AI coaching</h2>
+<p>AI features are optional and only work when you are signed in and the server has an AI key. When you use them, the server sends Claude your study field, year, selected interests, skill ratings, skill gaps, career matches, progress and your question. It does not send your name or email. Without AI, coaching text is rule-based and nothing leaves the server.</p></section>
+<section class="card u-mt20"><h2>Delete or export</h2>
+<p><a href="settings.html">Settings</a> lets you download your data as JSON, sign out everywhere, and delete your account. Deleting an account removes the profile, progress, linked sign-ins and sessions from the database.</p></section>
+<p class="muted small u-mt16">Orbit is a student project. If you run your own copy for real users, add your contact details here and have the wording reviewed for the rules that apply to you.</p>
+</main>
+</div>
+</div>
+<noscript><p class="u-p20">Orbit needs JavaScript to run. Please enable it in your browser.</p></noscript>
+</body>
+</html>

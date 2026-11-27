@@ -23,7 +23,7 @@
   const pwField = (id, label, auto) => `<div class="field"><label for="${id}">${label}</label><div class="glass pw"><input id="${id}" type="password" autocomplete="${auto}" maxlength="128" placeholder="Enter your password" required><button type="button" class="eye" data-eye="${id}" aria-label="Show password" aria-pressed="false">${I.glyph('eye', 20)}</button></div></div>`;
 
   function formHTML(st) {
-    if (mode === 'verify') return `<div id="vbox" aria-live="polite">${note('Confirming your email…', 'ok')}</div>`;
+    if (mode === 'verify') return `<form id="emailForm" novalidate><p class="muted">Enter the password you chose when you signed up to confirm your email.</p>${pwField('pw', 'Password', 'current-password')}<div id="ferr" class="notice bad" role="alert" hidden></div><button class="btn lg" id="sub" type="submit">Confirm email</button></form>`;
     if (mode === 'forgot') return `<form id="emailForm" novalidate>${field('em', 'Email address', '<input id="em" type="text" inputmode="email" autocomplete="email" maxlength="254" placeholder="Enter your email address" required>')}<div id="ferr" class="notice bad" role="alert" hidden></div><button class="btn lg" id="sub" type="submit">Email me a reset link</button><p class="center muted"><a href="#" data-mode="in">Back to sign in</a></p></form>`;
     if (mode === 'reset') return `<form id="emailForm" novalidate>${pwField('pw', 'New password (8+ characters)', 'new-password')}<div id="ferr" class="notice bad" role="alert" hidden></div><button class="btn lg" id="sub" type="submit">Set new password</button></form>`;
     return `<form id="emailForm" novalidate>
@@ -69,7 +69,7 @@
         ${anyOauth ? '' : '<p id="oa-note" class="muted small">Social sign-in buttons turn on when the server owner adds the provider keys (see the README).</p>'}
         ${anyOauth && !PROVS.every(([k]) => prov[k]) ? '<p id="oa-note" class="muted small">Greyed-out providers are not set up on this server.</p>' : ''}
         <a class="btn ghost block rise d6" href="index.html">${I.glyph('user', 16)} Continue as guest</a>
-        <p class="muted small rise d6">Guests keep progress in this browser only. Clearing browser data erases it.</p>
+        <p class="muted small rise d6">Guests keep progress in this browser only. Clearing browser data erases it. <a href="privacy.html">Privacy: what we store</a></p>
         ${mode === 'in' || mode === 'up' ? `<p class="center muted rise d7">${mode === 'in' ? 'New to Orbit?' : 'Already have an account?'} <a href="#" data-mode="${mode === 'in' ? 'up' : 'in'}">${mode === 'in' ? 'Create account' : 'Sign in'}</a></p>` : ''}
       </div></section>
       <aside class="split-art" aria-hidden="true">
@@ -90,11 +90,6 @@
       const i = $('#' + b.dataset.eye), on = i.type === 'password'; i.type = on ? 'text' : 'password';
       b.innerHTML = I.glyph(on ? 'eye-off' : 'eye', 20); b.setAttribute('aria-pressed', on); b.setAttribute('aria-label', on ? 'Hide password' : 'Show password');
     }));
-    if (mode === 'verify' && link) {
-      api('/api/auth/verify', { token: link.token }).then(() => { flash = { kind: 'ok', text: 'Email confirmed. You can sign in now.' }; mode = 'in'; render(); })
-        .catch((x) => { flash = { kind: 'bad', text: x.message }; mode = 'in'; render(); });
-      return;
-    }
     const form = $('#emailForm'); if (!form) return;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -103,6 +98,7 @@
         if (mode === 'in') { await api('/api/auth/login', { email: $('#em').value, password: $('#pw').value, remember: $('#rem').checked }); location.href = next; return; }
         if (mode === 'up') { const j = await api('/api/auth/register', { email: $('#em').value, password: $('#pw').value, name: $('#nm').value }); pending = j.message; render(); return; }
         if (mode === 'forgot') { const j = await api('/api/auth/forgot', { email: $('#em').value }); pending = j.message; render(); return; }
+        if (mode === 'verify') { await api('/api/auth/verify', { token: link.token, password: $('#pw').value }); flash = { kind: 'ok', text: 'Email confirmed. You can sign in now.' }; mode = 'in'; render(); return; }
         if (mode === 'reset') { await api('/api/auth/reset', { token: link.token, password: $('#pw').value }); flash = { kind: 'ok', text: 'Password changed. Sign in with the new password.' }; mode = 'in'; render(); return; }
       } catch (x) {
         ferr.textContent = x.message; ferr.hidden = false; btn.disabled = false;

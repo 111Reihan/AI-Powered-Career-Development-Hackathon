@@ -35,7 +35,7 @@ const register = (email, password = 'longenough1', name = 'Stu') => api(jar(), '
 const verified = async (email, password = 'longenough1') => { // register + confirm through the mailed link
   const before = countMails(A); await register(email, password); await waitMail(before + 1);
   const tok = tokenFrom(consoleMails(A), 'verify'); assert.ok(tok, 'verify link mailed');
-  assert.equal((await api(jar(), 'POST', '/api/auth/verify', { token: tok })).status, 200);
+  assert.equal((await api(jar(), 'POST', '/api/auth/verify', { password, token: tok })).status, 200);
 };
 const login = async (email, password = 'longenough1', extra = {}) => { const j = jar(); const r = await api(j, 'POST', '/api/auth/login', { email, password, ...extra }); return { j, r }; };
 
@@ -103,7 +103,8 @@ try {
     profiles.google = { sub: 'google-sub-9', name: 'Other', email: 'other@example.com', email_verified: true };
     const o = jar(); await idpFlow(o, 'google'); const rr = await idpFlow(o, 'facebook', '?link=1'); assert.match(rr.headers.get('location'), /err=linked/, 'identity already belongs to another account');
     assert.equal((await api(o, 'POST', '/api/auth/unlink', { provider: 'google' })).status, 400, 'cannot remove the only sign-in method');
-    assert.equal((await api(pw1Jar, 'POST', '/api/auth/unlink', { provider: 'facebook' })).status, 200);
+    assert.equal((await api(pw1Jar, 'POST', '/api/auth/unlink', { provider: 'facebook' })).status, 401, 'removing a sign-in method needs the password');
+    assert.equal((await api(pw1Jar, 'POST', '/api/auth/unlink', { provider: 'facebook', password: 'longenough1' })).status, 200);
     assert.ok(!(await me(pw1Jar)).identities.includes('facebook'));
   }
 
@@ -117,9 +118,9 @@ try {
     assert.equal(r1.status, 200); assert.equal(b1, b2, 'register answers identically for new and pending addresses');
     assert.equal((await login('enum@example.com')).r.status, 403); assert.equal((await login('enum@example.com', 'wrongpass1')).r.status, 401, 'wrong password stays generic');
     const tok = tokenFrom(consoleMails(A), 'verify'); assert.ok(tok);
-    const old = tokenFrom(consoleMails(A), 'verify', -2); assert.equal((await api(jar(), 'POST', '/api/auth/verify', { token: old })).status, 400, 'only the newest link works');
-    const vr = await api(jar(), 'POST', '/api/auth/verify', { token: tok }); assert.equal(vr.status, 200); assert.equal(vr.headers.getSetCookie().length, 0, 'verifying does not sign anyone in');
-    assert.equal((await api(jar(), 'POST', '/api/auth/verify', { token: tok })).status, 400, 'link is single-use');
+    const old = tokenFrom(consoleMails(A), 'verify', -2); assert.equal((await api(jar(), 'POST', '/api/auth/verify', { password: 'longenough1', token: old })).status, 400, 'only the newest link works');
+    const vr = await api(jar(), 'POST', '/api/auth/verify', { password: 'longenough1', token: tok }); assert.equal(vr.status, 200); assert.equal(vr.headers.getSetCookie().length, 0, 'verifying does not sign anyone in');
+    assert.equal((await api(jar(), 'POST', '/api/auth/verify', { password: 'longenough1', token: tok })).status, 400, 'link is single-use');
     const b3 = await (await register('enum@example.com')).text(); assert.equal(b3, b1, 'registering a CONFIRMED address looks the same too');
     const f1 = await (await api(jar(), 'POST', '/api/auth/forgot', { email: 'enum@example.com' })).text(), f2 = await (await api(jar(), 'POST', '/api/auth/forgot', { email: 'nobody@example.com' })).text();
     assert.equal(f1, f2, 'forgot-password does not reveal which addresses exist');
@@ -193,9 +194,10 @@ try {
   const files = [dbA, dbA + '-wal'].filter((f) => fs.existsSync(f));
   const rawAll = Buffer.concat(files.map((f) => fs.readFileSync(f))).toString('latin1');
   for (const secret of ['pw1@example.com', 'sync@example.com', 'longenough1', 'newpassword1', 'data-scientist', 'Annabelle Marker', 'Real Owner']) assert.ok(!rawAll.includes(secret), `"${secret}" must not appear in the database file in clear text`);
-  assert.match(rawAll, /[0-9a-f]{32}:[0-9a-f]{128}/, 'password hashes are salted scrypt');
+  assert.match(rawAll, /scrypt\$65536\$8\$2\$[0-9a-f]{32}\$[0-9a-f]{128}/, 'password hashes are salted scrypt with their parameters');
   assert.ok(!/at-google|code-google/.test(rawAll), 'provider tokens are not stored');
-  { const d = rawDb(dbA); const uid = (await me(S)).id; assert.equal(await (await api(S, 'DELETE', '/api/me')).status, 200);
+  { const d = rawDb(dbA); const uid = (await me(S)).id; assert.equal((await api(S, 'DELETE', '/api/me', {})).status, 401, 'deleting needs the password'); assert.equal((await api(S, 'DELETE', '/api/me', { password: 'wrongpass99' })).status, 401);
+    assert.equal((await api(S, 'DELETE', '/api/me', { password: 'longenough1' })).status, 200);
     assert.equal(d.prepare('SELECT COUNT(*) c FROM users WHERE id=?').get(uid).c, 0); assert.equal(d.prepare('SELECT COUNT(*) c FROM sessions WHERE user_id=?').get(uid).c, 0, 'sessions removed with the account'); d.close();
     assert.equal((await login('sync@example.com')).r.status, 401); }
 
@@ -214,7 +216,7 @@ try {
     assert.equal((await pc.api(jar(), 'POST', '/api/auth/register', { email: 'prod@example.com', password: 'longenough1', name: 'P' })).status, 200);
     for (let i = 0; i < 60 && !smtp.mails.length; i++) await wait(50); assert.equal(smtp.mails.length, 1, 'mail was delivered through SMTP');
     const txt = smtp.last(); assert.match(txt, /From: .*hello@orbit\.test/); assert.match(txt, /https:\/\/orbit\.test\/login\.html#verify=/);
-    assert.equal((await pc.api(jar(), 'POST', '/api/auth/verify', { token: tokenFrom(txt, 'verify') })).status, 200);
+    assert.equal((await pc.api(jar(), 'POST', '/api/auth/verify', { password: 'longenough1', token: tokenFrom(txt, 'verify') })).status, 200);
     const j = jar(); const lr = await pc.api(j, 'POST', '/api/auth/login', { email: 'prod@example.com', password: 'longenough1' }); assert.equal(lr.status, 200);
     const sc = lr.headers.getSetCookie()[0]; assert.match(sc, /^__Host-orbit_sid=/); assert.match(sc, /; Secure/); assert.match(sc, /; HttpOnly/); assert.match(sc, /Path=\//); assert.ok(!/Domain=/i.test(sc));
     assert.equal((await (await pc.req(j, '/api/me')).json()).user.email, 'prod@example.com');
@@ -239,9 +241,10 @@ try {
   { const legacy = path.join(tmp, 'orbit.json'), ldb = path.join(tmp, 'l.db');
     fs.writeFileSync(legacy, JSON.stringify({ secret: 'x', sessions: {}, users: { u1: { id: 'u1', provider: 'password', sub: 'old@example.com', email: 'old@example.com', name: 'Old', pw: legacyHash('oldpassword1'), data: good(), updatedAt: 5 }, u2: { id: 'u2', provider: 'google', sub: 'g-old', email: 'g@example.com', name: 'G Old', data: null } } }));
     const L = await start({ ORBIT_DB_FILE: ldb, ORBIT_DATA_FILE: legacy }, 3218);
-    try { assert.match(L.out(), /Imported 2 account/); assert.ok(fs.existsSync(legacy + '.migrated') && !fs.existsSync(legacy));
+    try { assert.match(L.out(), /Imported 2 account/); assert.ok(!fs.existsSync(legacy) && !fs.existsSync(legacy + '.migrated'), 'the plaintext import file is removed');
       const lc = client(L.base), j = jar(); assert.equal((await lc.api(j, 'POST', '/api/auth/login', { email: 'old@example.com', password: 'oldpassword1' })).status, 200, 'old password still works');
       const d = (await (await lc.api(j, 'GET', '/api/data')).json()); assert.equal(d.data.profile.name, 'Annabelle Marker'); assert.equal(d.rev, 1);
+      { const x = rawDb(ldb); assert.match(x.prepare('SELECT pw FROM users WHERE pw IS NOT NULL').get().pw, /^scrypt\$65536\$8\$2\$/, 'an old password hash is upgraded at the next sign-in'); x.close(); }
     } finally { await stop(L); } }
 
   console.log('auth tests passed');

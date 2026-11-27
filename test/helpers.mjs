@@ -14,7 +14,7 @@ export const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-'));
 
 export function start(env, port) {
   return new Promise((resolve, reject) => {
-    const p = spawn('node', ['--no-warnings', 'server.js'], { cwd: root, env: { ...process.env, NODE_ENV: 'test', PORT: String(port), ORBIT_DATA_KEY: KEY, ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn('node', ['--no-warnings', 'server.js'], { cwd: root, env: { ...process.env, NODE_ENV: 'test', PORT: String(port), ORBIT_DATA_KEY: KEY, ORBIT_MAIL_IP_HOURLY: '100000', ORBIT_MAIL_DAILY: '100000', ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = '';
     p.stdout.on('data', (d) => { out += d; if (out.includes('running')) resolve({ p, out: () => out, err: () => err, port, base: `http://localhost:${port}` }); });
     p.stderr.on('data', (d) => { err += d; });

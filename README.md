@@ -97,6 +97,10 @@ npm start
 
 Email accounts need a mail server (`SMTP_URL`, see `.env.example`). On localhost, confirmation and reset links are printed in the server console.
 
+## Deploy on Vercel
+
+The repo includes a `vercel.json` that serves the `public/` folder as a static site with the same security headers. Import the repo in Vercel and deploy with no build settings. The hosted site runs in demo mode for guests: every page works and progress is saved in the browser. Accounts and the AI coach run with `npm start` on a Node.js host.
+
 ## How it is built
 
 - Plain HTML, CSS and JavaScript on the front end. Each action has its own page.

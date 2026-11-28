@@ -34,7 +34,7 @@
   }
 
   const boot = Promise.all([
-    fetch('/api/status', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ email: true })),
+    fetch('/api/status', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { email: false })).catch(() => ({ email: false })), // no server behind this page (static hosting): guests only
     fetch('/api/me', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ user: null })),
   ]);
   async function render() {

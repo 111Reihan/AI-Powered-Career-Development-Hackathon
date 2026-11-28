@@ -97,7 +97,7 @@ const server = http.createServer(async (req, res) => {
     }
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/status' && req.method === 'GET') { // public and minimal: no model name, no setup hints
-      return json(res, 200, { ai: await aiReady(), providers: auth.configured(), email: auth.emailEnabled(), mail: mailMode() });
+      return json(res, 200, { ai: await aiReady(), email: auth.emailEnabled(), mail: mailMode() });
     }
     if (await auth.handle(req, res, url, { json, readBody })) return;
     if (url.pathname === '/api/exam' || url.pathname === '/api/coach') {

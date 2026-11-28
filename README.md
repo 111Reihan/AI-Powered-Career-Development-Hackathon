@@ -34,7 +34,7 @@ Students often pick a career from guesswork. Orbit replaces that with a clear pi
 | Plan | A roadmap in four phases (foundations, core skills, advanced, capstone), with tasks, projects and free learning links, sized to the student's weekly hours |
 | Track | A readiness score, a six-month activity heatmap, streaks, exam scores and achievements, in a style similar to coding-practice sites |
 | Show | A portfolio built from finished project tasks. It can be copied as Markdown or printed as a one-page view |
-| Save | Accounts with Google, Microsoft, Facebook, Apple or email, or continue as a guest. Progress syncs across devices |
+| Save | Accounts with email and password, or continue as a guest. Progress syncs across devices |
 
 The Home page shows a short snapshot: where you stand, what to develop, and what to do next.
 
@@ -95,7 +95,7 @@ export ANTHROPIC_API_KEY=your-key
 npm start
 ```
 
-Sign-in with Google, Microsoft, Facebook or Apple, and real email, turn on when their settings are added. They are listed in `.env.example`. On localhost, confirmation and reset links are printed in the server console.
+Email accounts need a mail server (`SMTP_URL`, see `.env.example`). On localhost, confirmation and reset links are printed in the server console.
 
 ## How it is built
 

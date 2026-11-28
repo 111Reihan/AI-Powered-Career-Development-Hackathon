@@ -1,17 +1,15 @@
-// Account tests: OAuth (mock provider), email + password with confirmation/reset, lockout, sessions, CSRF, sync, encryption at rest, migration.
+// Account tests: email + password with confirmation/reset, lockout, sessions, CSRF, sync, encryption at rest, migration.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { startMockIdp } from './mock-idp.mjs';
 import { start, stop, jar, client, consoleMails, tokenFrom, countMails, fakeSmtp, rawDb, wait, tmpdir, legacyHash, KEY } from './helpers.mjs';
 import crypto from 'node:crypto';
 
 const tmp = tmpdir();
-const { srv: idp, seen, profiles, tweaks } = startMockIdp(4030);
 const smtp = fakeSmtp(4031);
 const dbA = path.join(tmp, 'a.db');
-const envA = { ORBIT_OAUTH_MOCK: 'http://localhost:4030', ORBIT_DB_FILE: dbA, BASE_URL: 'http://localhost:3210', ORBIT_AUTH_LIMIT: '10000' };
+const envA = { ORBIT_DB_FILE: dbA, BASE_URL: 'http://localhost:3210', ORBIT_AUTH_LIMIT: '10000' };
 let A = await start(envA, 3210);
 const B = await start({ ORBIT_DB_FILE: path.join(tmp, 'b.db') }, 3211);
 const PROD = await start({ NODE_ENV: 'production', BASE_URL: 'https://orbit.test', SMTP_URL: 'smtp://127.0.0.1:4031/?ignoreTLS=true', MAIL_FROM: 'Orbit <hello@orbit.test>', ORBIT_DB_FILE: path.join(tmp, 'p.db'), ORBIT_AUTH_LIMIT: '10000' }, 3212);
@@ -19,17 +17,6 @@ const base = 'http://localhost:3210';
 const { req, api } = client(base);
 const servers = [B, PROD];
 const waitMail = async (n, s = A) => { for (let i = 0; i < 80; i++) { if (countMails(s) >= n) return; await wait(50); } throw new Error('mail not sent'); };
-const idpFlow = async (j, k, qs = '') => { // browser: start -> provider -> callback
-  let r = await req(j, `/auth/${k}/start${qs}`); assert.equal(r.status, 302, `${k} start`);
-  const loc = new URL(r.headers.get('location'));
-  if (!loc.origin.includes('4030')) return r;
-  if (k === 'apple') { // form_post: provider POSTs back
-    const state = loc.searchParams.get('state'); await fetch(loc, { redirect: 'manual' });
-    return req(j, '/auth/apple/callback', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: 'code-apple', state, user: JSON.stringify({ name: { firstName: 'Ann', lastName: 'Apple' } }) }) });
-  }
-  r = await fetch(loc, { redirect: 'manual' }); const cb = new URL(r.headers.get('location'));
-  return req(j, cb.pathname + cb.search);
-};
 const me = async (j) => (await (await req(j, '/api/me')).json()).user;
 const register = (email, password = 'longenough1', name = 'Stu') => api(jar(), 'POST', '/api/auth/register', { email, password, name });
 const verified = async (email, password = 'longenough1') => { // register + confirm through the mailed link
@@ -42,71 +29,7 @@ const login = async (email, password = 'longenough1', extra = {}) => { const j =
 try {
   // ---------- status / configuration ----------
   let st = await (await fetch(base + '/api/status')).json();
-  assert.deepEqual(st.providers, { google: true, microsoft: true, facebook: true, apple: true }); assert.equal(st.email, true); assert.equal(st.mail, 'console');
-  assert.equal((await (await fetch('http://localhost:3211/api/status')).json()).providers.google, false);
-
-  // ---------- OAuth ----------
-  for (const k of ['google', 'microsoft', 'facebook']) {
-    const j = jar();
-    let r = await req(j, `/auth/${k}/start?next=/exam.html`);
-    const loc = new URL(r.headers.get('location'));
-    assert.equal(loc.origin, 'http://localhost:4030'); assert.equal(loc.searchParams.get('response_type'), 'code');
-    assert.equal(loc.searchParams.get('redirect_uri'), `${base}/auth/${k}/callback`); assert.ok(j.has('orbit_oauth'));
-    r = await fetch(loc, { redirect: 'manual' }); const cb = new URL(r.headers.get('location'));
-    r = await req(j, cb.pathname + cb.search);
-    assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/exam.html'); assert.ok(j.has('orbit_sid'));
-    const u = await me(j); assert.ok(u.identities.includes(k)); assert.ok(u.name);
-    const j2 = jar(); await idpFlow(j2, k); assert.equal((await me(j2)).id, u.id, 'same provider account -> same user');
-  }
-  assert.ok(seen.tokenCalls.some((t) => t.k === 'facebook' && t.method === 'GET'), 'facebook token exchange uses GET as documented');
-  assert.ok(seen.tokenCalls.some((t) => t.k === 'google' && t.method === 'POST'));
-  { // Apple: form_post, nonce sent, id_token claims checked
-    const j = jar(); const r = await idpFlow(j, 'apple');
-    assert.equal(r.status, 302); assert.ok(j.has('orbit_sid')); assert.equal(seen.lastAuthorize.response_mode, 'form_post'); assert.ok(seen.lastAuthorize.nonce);
-    assert.equal((await me(j)).name, 'Ann Apple');
-    for (const [t, v] of [['appleAud', 'someone-else'], ['appleNonce', 'replayed'], ['appleIss', 'https://evil.example']]) {
-      tweaks[t] = v; const j2 = jar(); const r2 = await idpFlow(j2, 'apple');
-      assert.match(r2.headers.get('location'), /err=failed/, t + ' rejected'); assert.ok(!j2.has('orbit_sid')); tweaks[t] = null;
-    }
-  }
-  { // callback protections
-    const j = jar(); let r = await req(j, '/auth/google/callback?code=x&state=forged.sig'); assert.match(r.headers.get('location'), /err=state/); assert.ok(!j.has('orbit_sid'));
-    const s = await req(jar(), '/auth/google/start'); const state = new URL(s.headers.get('location')).searchParams.get('state');
-    r = await req(jar(), '/auth/google/callback?code=x&state=' + encodeURIComponent(state)); assert.match(r.headers.get('location'), /err=state/, 'login CSRF: state without matching cookie');
-    assert.match((await req(jar(), '/auth/google/callback?error=access_denied')).headers.get('location'), /err=denied/);
-    const st4 = new URL((await req(jar(), '/auth/google/start?next=//evil.com')).headers.get('location')).searchParams.get('state');
-    assert.ok(!Buffer.from(st4.split('.')[0], 'base64url').toString().includes('evil'), 'open redirect dropped');
-  }
-
-  // ---------- account linking rules ----------
-  await verified('pw1@example.com');
-  { const { j } = await login('pw1@example.com'); var pw1 = await me(j); var pw1Jar = j; }
-  profiles.google = { sub: 'google-sub-2', name: 'G Two', email: 'pw1@example.com', email_verified: true };
-  { const j = jar(); await idpFlow(j, 'google'); const u = await me(j); assert.equal(u.id, pw1.id, 'Google with the same VERIFIED email joins the existing account'); assert.ok(u.hasPassword && u.identities.includes('google')); }
-  profiles.microsoft = { sub: 'ms-sub-2', name: 'M Two', email: 'pw1@example.com' };
-  { const j = jar(); await idpFlow(j, 'microsoft'); assert.notEqual((await me(j)).id, pw1.id, 'Microsoft email is not proof of ownership: no auto-link (nOAuth)'); }
-  profiles.google = { sub: 'google-sub-2b', name: 'G Unverified', email: 'pw1@example.com', email_verified: false };
-  { const j = jar(); await idpFlow(j, 'google'); assert.notEqual((await me(j)).id, pw1.id, 'unverified Google email never links'); }
-  { // squatter: unverified signup with someone's email is removed once the real owner proves it
-    await register('squat@example.com', 'squatterpass1'); // never confirmed
-    assert.equal((await login('squat@example.com', 'squatterpass1')).r.status, 403, 'unconfirmed account cannot sign in');
-    profiles.google = { sub: 'google-sub-3', name: 'Real Owner', email: 'squat@example.com', email_verified: true };
-    const j = jar(); await idpFlow(j, 'google'); assert.ok(await me(j));
-    assert.equal((await login('squat@example.com', 'squatterpass1')).r.status, 401, 'squatter password no longer works');
-  }
-  { // explicit linking from Settings
-    profiles.facebook = { id: 'fb-link-1', name: 'Linker', email: 'x@example.com' };
-    let r = await req(jar(), '/auth/facebook/start?link=1'); assert.match(r.headers.get('location'), /err=signin/, 'linking needs a session');
-    r = await idpFlow(pw1Jar, 'facebook', '?link=1'); assert.equal(r.headers.get('location'), '/settings.html');
-    assert.ok((await me(pw1Jar)).identities.includes('facebook'));
-    const j = jar(); await idpFlow(j, 'facebook'); assert.equal((await me(j)).id, pw1.id, 'signing in with the linked provider reaches the account');
-    profiles.google = { sub: 'google-sub-9', name: 'Other', email: 'other@example.com', email_verified: true };
-    const o = jar(); await idpFlow(o, 'google'); const rr = await idpFlow(o, 'facebook', '?link=1'); assert.match(rr.headers.get('location'), /err=linked/, 'identity already belongs to another account');
-    assert.equal((await api(o, 'POST', '/api/auth/unlink', { provider: 'google' })).status, 400, 'cannot remove the only sign-in method');
-    assert.equal((await api(pw1Jar, 'POST', '/api/auth/unlink', { provider: 'facebook' })).status, 401, 'removing a sign-in method needs the password');
-    assert.equal((await api(pw1Jar, 'POST', '/api/auth/unlink', { provider: 'facebook', password: 'longenough1' })).status, 200);
-    assert.ok(!(await me(pw1Jar)).identities.includes('facebook'));
-  }
+  assert.deepEqual(Object.keys(st).sort(), ['ai', 'email', 'mail']); assert.equal(st.email, true); assert.equal(st.mail, 'console');
 
   // ---------- email + password ----------
   { const j = jar();
@@ -127,6 +50,7 @@ try {
     const n = countMails(A); for (let i = 0; i < 5; i++) await register('enum@example.com'); await wait(300);
     assert.ok(countMails(A) - n <= 1, 'mail is capped at 3 per address per hour');
   }
+  await verified('pw1@example.com');
   { // sign in / remember me / CSRF
     const on = await login('pw1@example.com'); assert.equal(on.r.status, 200);
     assert.match(on.r.headers.getSetCookie()[0], /Max-Age=\d+/); assert.match(on.r.headers.getSetCookie()[0], /HttpOnly/);
@@ -193,9 +117,8 @@ try {
   // ---------- storage: encrypted at rest, cascade delete ----------
   const files = [dbA, dbA + '-wal'].filter((f) => fs.existsSync(f));
   const rawAll = Buffer.concat(files.map((f) => fs.readFileSync(f))).toString('latin1');
-  for (const secret of ['pw1@example.com', 'sync@example.com', 'longenough1', 'newpassword1', 'data-scientist', 'Annabelle Marker', 'Real Owner']) assert.ok(!rawAll.includes(secret), `"${secret}" must not appear in the database file in clear text`);
+  for (const secret of ['pw1@example.com', 'sync@example.com', 'longenough1', 'newpassword1', 'data-scientist', 'Annabelle Marker']) assert.ok(!rawAll.includes(secret), `"${secret}" must not appear in the database file in clear text`);
   assert.match(rawAll, /scrypt\$65536\$8\$2\$[0-9a-f]{32}\$[0-9a-f]{128}/, 'password hashes are salted scrypt with their parameters');
-  assert.ok(!/at-google|code-google/.test(rawAll), 'provider tokens are not stored');
   { const d = rawDb(dbA); const uid = (await me(S)).id; assert.equal((await api(S, 'DELETE', '/api/me', {})).status, 401, 'deleting needs the password'); assert.equal((await api(S, 'DELETE', '/api/me', { password: 'wrongpass99' })).status, 401);
     assert.equal((await api(S, 'DELETE', '/api/me', { password: 'longenough1' })).status, 200);
     assert.equal(d.prepare('SELECT COUNT(*) c FROM users WHERE id=?').get(uid).c, 0); assert.equal(d.prepare('SELECT COUNT(*) c FROM sessions WHERE user_id=?').get(uid).c, 0, 'sessions removed with the account'); d.close();
@@ -211,7 +134,7 @@ try {
 
   // ---------- production-like server: SMTP delivery, HSTS, __Host- cookie ----------
   { const pb = 'http://localhost:3212', pc = client(pb);
-    const s = await (await fetch(pb + '/api/status')).json(); assert.equal(s.email, true); assert.equal(s.mail, 'smtp'); assert.equal(s.providers.google, false, 'mock IdP is never honoured in production');
+    const s = await (await fetch(pb + '/api/status')).json(); assert.equal(s.email, true); assert.equal(s.mail, 'smtp');
     assert.match((await fetch(pb + '/index.html')).headers.get('strict-transport-security'), /max-age=\d{7,}/);
     assert.equal((await pc.api(jar(), 'POST', '/api/auth/register', { email: 'prod@example.com', password: 'longenough1', name: 'P' })).status, 200);
     for (let i = 0; i < 60 && !smtp.mails.length; i++) await wait(50); assert.equal(smtp.mails.length, 1, 'mail was delivered through SMTP');
@@ -228,13 +151,10 @@ try {
   { // start-up refusals
     await assert.rejects(start({ NODE_ENV: 'production', BASE_URL: 'https://orbit.test', ORBIT_DATA_KEY: '', ORBIT_DB_FILE: path.join(tmp, 'x.db') }, 3215), /ORBIT_DATA_KEY/, 'production needs an encryption key');
     await assert.rejects(start({ NODE_ENV: 'production', BASE_URL: 'http://example.com', ORBIT_DB_FILE: path.join(tmp, 'y.db') }, 3216), /Refusing to start|https/, 'production needs https');
-    const M = await start({ NODE_ENV: 'development', ORBIT_OAUTH_MOCK: 'http://localhost:4030', ORBIT_DB_FILE: path.join(tmp, 'm.db') }, 3217);
-    try { assert.equal((await (await fetch(M.base + '/api/status')).json()).providers.google, false, 'ORBIT_OAUTH_MOCK is ignored outside NODE_ENV=test'); assert.match(M.err(), /ORBIT_OAUTH_MOCK ignored/); } finally { await stop(M); }
   }
 
-  // ---------- default limits and provider without keys ----------
-  { const r1 = await fetch('http://localhost:3211/auth/google/start', { redirect: 'manual' }); assert.match(r1.headers.get('location'), /err=unconfigured/);
-    let last = 0; for (let i = 0; i < 40; i++) last = (await fetch('http://localhost:3211/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-orbit': '1' }, body: JSON.stringify({ email: 'z@z.co', password: 'abcdefgh' + i }) })).status;
+  // ---------- default limits ----------
+  { let last = 0; for (let i = 0; i < 40; i++) last = (await fetch('http://localhost:3211/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-orbit': '1' }, body: JSON.stringify({ email: 'z@z.co', password: 'abcdefgh' + i }) })).status;
     assert.equal(last, 429, 'per-client rate limit on sign-in calls'); }
 
   // ---------- migration from the old JSON store ----------
@@ -248,4 +168,4 @@ try {
     } finally { await stop(L); } }
 
   console.log('auth tests passed');
-} finally { await Promise.all([A, ...servers].map(stop)); idp.close(); smtp.srv.close(); fs.rmSync(tmp, { recursive: true, force: true }); }
+} finally { await Promise.all([A, ...servers].map(stop)); smtp.srv.close(); fs.rmSync(tmp, { recursive: true, force: true }); }

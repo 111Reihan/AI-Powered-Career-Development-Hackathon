@@ -45,15 +45,6 @@ try {
     const list = await (await api(jars[11], 'GET', '/api/auth/sessions')).json(); assert.equal(list.sessions.length, 10, 'older sessions are dropped');
     assert.equal((await (await req(jars[0], '/api/me')).json()).user, null, 'the oldest session no longer works'); }
 
-  // ---- step-up: social-only accounts must have signed in recently ----
-  { await verified(H, { api }, 'social@example.com'); const j = jar(); await api(j, 'POST', '/api/auth/login', { email: 'social@example.com', password: PW });
-    const d = rawDb(dbH); const uid = (await (await req(j, '/api/me')).json()).user.id;
-    d.prepare('UPDATE users SET pw=NULL WHERE id=?').run(uid); d.prepare("INSERT INTO identities(provider,sub,user_id) VALUES('google','g-social',?)").run(uid);
-    d.prepare('UPDATE sessions SET created=created-3600000 WHERE user_id=?').run(uid);
-    const r = await api(j, 'DELETE', '/api/me', {}); assert.equal(r.status, 403); assert.equal((await r.json()).code, 'reauth');
-    d.prepare('UPDATE sessions SET created=? WHERE user_id=?').run(Date.now(), uid);
-    assert.equal((await api(j, 'DELETE', '/api/me', {})).status, 200, 'a fresh sign-in may delete'); d.close(); }
-
   // ---- lockout: a stranger cannot lock the owner out, but spread-out guessing is still capped ----
   { const L = await start({ ORBIT_DB_FILE: path.join(tmp, 'l.db'), BASE_URL: base(3231), TRUST_PROXY: '1', ORBIT_AUTH_LIMIT: '100000' }, 3231); extra.push(L);
     const lc = client(base(3231)), from = (ip) => ({ 'x-forwarded-for': ip });
@@ -115,7 +106,7 @@ try {
   // ---- headers, status, portfolio validation ----
   { const r = await fetch(base(3230) + '/index.html'); const csp = r.headers.get('content-security-policy');
     assert.ok(!/unsafe-inline|unsafe-eval/.test(csp), 'CSP has no unsafe-inline'); assert.match(csp, /object-src 'none'/);
-    assert.deepEqual(Object.keys(await (await fetch(base(3230) + '/api/status')).json()).sort(), ['ai', 'email', 'mail', 'providers'], 'status exposes no model name or setup hints');
+    assert.deepEqual(Object.keys(await (await fetch(base(3230) + '/api/status')).json()).sort(), ['ai', 'email', 'mail'], 'status exposes no model name or setup hints');
     for (const f of fs.readdirSync(path.join(import.meta.dirname, '..', 'public')).filter((x) => x.endsWith('.html'))) assert.ok(!/ style="/.test(fs.readFileSync(path.join(import.meta.dirname, '..', 'public', f), 'utf8')), f + ' has no inline style');
     await verified(H, { api }, 'port@example.com'); const j = jar(); await api(j, 'POST', '/api/auth/login', { email: 'port@example.com', password: PW });
     const projects = { 'data-scientist:python:3': { url: 'javascript:alert(1)', note: '<img src=x onerror=alert(1)>'.repeat(40) }, 'data-scientist:sql:3': { url: 'http://insecure.example.com/x', note: 'ok' },

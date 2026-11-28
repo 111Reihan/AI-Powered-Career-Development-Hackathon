@@ -12,7 +12,8 @@ def watch(pg):
     pg.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
     pg.on('pageerror', lambda e: errors.append(str(e)))
     pg.on('response', lambda r: errors.append(f'HTTP {r.status} {r.request.method} {r.url}') if r.status == 403 else None)
-    pg.on('requestfailed', lambda r: errors.append('reqfail ' + r.url))
+    # A request cut short because the test moved to another page (net::ERR_ABORTED) is not an app error.
+    pg.on('requestfailed', lambda r: None if 'ERR_ABORTED' in str(r.failure) else errors.append('reqfail ' + r.url + ' ' + str(r.failure)))
 PAGES = ['index', 'onboarding', 'careers', 'assessment', 'exam', 'gaps', 'roadmap', 'progress', 'settings', 'login', 'portfolio', 'privacy']
 with sync_playwright() as p:
     b = getattr(p, os.environ.get('BROWSER', 'chromium')).launch(); ctx = b.new_context(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
